@@ -1,0 +1,2083 @@
+,Instruction,Title,Response
+0,Simple contract that stores a single integer and returns it,Utility - ['BasicStorage'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct IntStorage {
+        value: u32
+    }
+}
+
+#[public]
+impl IntStorage {
+    pub fn new(initial: u32) -> Self {
+        let mut instance = Self::default();
+        instance.value = initial;
+        instance
+    }
+
+    pub fn get_value(&self) -> u32 {
+        self.value
+    }
+}"
+1,A simple counter contract that increments on each call,Utility - ['IncrementOnly'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Counter {
+        count: u64
+    }
+}
+
+#[public]
+impl Counter {
+    pub fn increment(&mut self) {
+        self.count += 1;
+    }
+
+    pub fn get_count(&self) -> u64 {
+        self.count
+    }
+}"
+2,A decrement-only counter contract,Utility - ['DecrementOnly'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct DecrementCounter {
+        count: u64
+    }
+}
+
+#[public]
+impl DecrementCounter {
+    pub fn new(initial: u64) -> Self {
+        let mut instance = Self::default();
+        instance.count = initial;
+        instance
+    }
+
+    pub fn decrement(&mut self) -> Result<(), String> {
+        if self.count == 0 {
+            return Err(""Already at zero"".into());
+        }
+        self.count -= 1;
+        Ok(())
+    }
+
+    pub fn get_count(&self) -> u64 {
+        self.count
+    }
+}"
+3,A contract that toggles a boolean value on each call,Utility - ['BooleanToggle'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Toggle {
+        state: bool
+    }
+}
+
+#[public]
+impl Toggle {
+    pub fn new(initial: bool) -> Self {
+        let mut instance = Self::default();
+        instance.state = initial;
+        instance
+    }
+
+    pub fn flip(&mut self) {
+        self.state = !self.state;
+    }
+
+    pub fn get_state(&self) -> bool {
+        self.state
+    }
+}"
+4,"Basic ERC20 contract with name MyToken, symbol MTK, and a mint function",ERC20 - ['Mintable'],"pub struct BasicTokenParams;
+
+impl Erc20Params for BasicTokenParams {
+    const NAME: &'static str = ""MyToken"";
+    const SYMBOL: &'static str = ""MTK"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct BasicToken {
+        #[borrow]
+        Erc20<BasicTokenParams> erc20;
+    }
+}
+
+#[public]
+#[inherit(Erc20<BasicTokenParams>)]
+impl BasicToken {
+    pub fn mint_tokens(&mut self, amount: U256) -> Result<(), Erc20Error> {
+        self.erc20.mint(msg::sender(), amount)?;
+        Ok(())
+    }
+}"
+5,ERC20 token with a burn function,ERC20 - ['Burnable'],"pub struct BurnTokenParams;
+impl Erc20Params for BurnTokenParams {
+    const NAME: &'static str = ""BurnToken"";
+    const SYMBOL: &'static str = ""BRT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct BurnToken {
+        #[borrow]
+        Erc20<BurnTokenParams> erc20;
+    }
+}
+
+#[public]
+#[inherit(Erc20<BurnTokenParams>)]
+impl BurnToken {
+    pub fn burn_tokens(&mut self, amount: U256) -> Result<(), Erc20Error> {
+        self.erc20.burn(msg::sender(), amount)?;
+        Ok(())
+    }
+}"
+6,ERC20 token with pausable transfers,ERC20 - ['Pausable'],"pub struct PausableTokenParams;
+
+impl Erc20Params for PausableTokenParams {
+    const NAME: &'static str = ""PauseToken"";
+    const SYMBOL: &'static str = ""PST"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct PausableToken {
+        #[borrow]
+        Erc20<PausableTokenParams> erc20;
+        paused: bool,
+        owner: Address
+    }
+}
+
+#[public]
+#[inherit(Erc20<PausableTokenParams>)]
+impl PausableToken {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance.paused = false;
+        instance
+    }
+
+    pub fn pause(&mut self) {
+        if msg::sender() == self.owner {
+            self.paused = true;
+        }
+    }
+
+    pub fn unpause(&mut self) {
+        if msg::sender() == self.owner {
+            self.paused = false;
+        }
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        if self.paused {
+            return Err(Erc20Error::Custom(""Contract is paused"".into()));
+        }
+        self.erc20.transfer(to, amount)
+    }
+}"
+7,ERC20 token with an approval and transferFrom function for delegated transfers,"ERC20 - ['Approval', 'TransferFrom']","pub struct DelegatedTokenParams;
+
+impl Erc20Params for DelegatedTokenParams {
+    const NAME: &'static str = ""DelegatedToken"";
+    const SYMBOL: &'static str = ""DLT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct DelegatedToken {
+        #[borrow]
+        Erc20<DelegatedTokenParams> erc20;
+    }
+}
+
+#[public]
+#[inherit(Erc20<DelegatedTokenParams>)]
+impl DelegatedToken {
+    // Erc20 already includes approve and transfer_from by default if properly implemented,
+    // but here is a sample for reference:
+    pub fn approve_spender(&mut self, spender: Address, amount: U256) -> Result<bool, Erc20Error> {
+        self.erc20.approve(spender, amount)
+    }
+
+    pub fn transfer_from_user(
+        &mut self,
+        from: Address,
+        to: Address,
+        amount: U256
+    ) -> Result<bool, Erc20Error> {
+        self.erc20.transfer_from(from, to, amount)
+    }
+}"
+8,ERC20 token with dynamic transaction fees,ERC20 - ['DynamicFees'],"pub struct FeeTokenParams;
+
+impl Erc20Params for FeeTokenParams {
+    const NAME: &'static str = ""FeeToken"";
+    const SYMBOL: &'static str = ""FET"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct FeeToken {
+        #[borrow]
+        Erc20<FeeTokenParams> erc20;
+        fee_percent: u8,
+        fee_collector: Address
+    }
+}
+
+#[public]
+#[inherit(Erc20<FeeTokenParams>)]
+impl FeeToken {
+    pub fn new(collector: Address, fee_percent: u8) -> Self {
+        let mut instance = Self::default();
+        instance.fee_collector = collector;
+        instance.fee_percent = fee_percent;
+        instance
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        let fee = (amount * U256::from(self.fee_percent)) / U256::from(100);
+        let transfer_amount = amount - fee;
+        // Transfer the fee to the collector
+        self.erc20._transfer(msg::sender(), self.fee_collector, fee)?;
+        // Transfer the remainder to the target
+        self.erc20._transfer(msg::sender(), to, transfer_amount)
+    }
+}"
+9,ERC20 token that enforces a maximum transaction limit,ERC20 - ['MaxTransactionLimit'],"pub struct MaxLimitTokenParams;
+
+impl Erc20Params for MaxLimitTokenParams {
+    const NAME: &'static str = ""LimitToken"";
+    const SYMBOL: &'static str = ""LMT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct LimitToken {
+        #[borrow]
+        Erc20<MaxLimitTokenParams> erc20;
+        max_tx: U256
+    }
+}
+
+#[public]
+#[inherit(Erc20<MaxLimitTokenParams>)]
+impl LimitToken {
+    pub fn new(limit: U256) -> Self {
+        let mut instance = Self::default();
+        instance.max_tx = limit;
+        instance
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        if amount > self.max_tx {
+            return Err(Erc20Error::Custom(""Exceeds max transaction limit"".into()));
+        }
+        self.erc20.transfer(to, amount)
+    }
+}"
+10,ERC20 token with a timelock on the entire supply until a certain block timestamp,ERC20 - ['Timelock'],"pub struct LockTokenParams;
+
+impl Erc20Params for LockTokenParams {
+    const NAME: &'static str = ""LockToken"";
+    const SYMBOL: &'static str = ""LKT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct LockToken {
+        #[borrow]
+        Erc20<LockTokenParams> erc20;
+        unlock_time: u64
+    }
+}
+
+#[public]
+#[inherit(Erc20<LockTokenParams>)]
+impl LockToken {
+    pub fn new(unlock: u64) -> Self {
+        let mut instance = Self::default();
+        instance.unlock_time = unlock;
+        instance
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        let current_time = block_timestamp();
+        if current_time < self.unlock_time {
+            return Err(Erc20Error::Custom(""Tokens locked"".into()));
+        }
+        self.erc20.transfer(to, amount)
+    }
+}"
+11,"ERC20 token that auto-stakes tokens when transferred, storing stakers in a separate list",ERC20 - ['AutoStaking'],"pub struct StakingTokenParams;
+
+impl Erc20Params for StakingTokenParams {
+    const NAME: &'static str = ""StakeToken"";
+    const SYMBOL: &'static str = ""STK"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct StakingToken {
+        #[borrow]
+        Erc20<StakingTokenParams> erc20;
+        stakers: mapping(Address => bool)
+    }
+}
+
+#[public]
+#[inherit(Erc20<StakingTokenParams>)]
+impl StakingToken {
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        self.erc20.transfer(to, amount)?;
+        self.stakers.setter(to).set(true);
+        Ok(true)
+    }
+
+    pub fn is_staker(&self, user: Address) -> bool {
+        self.stakers.get(user)
+    }
+}"
+12,ERC20 token that charges a small fee and burns it on each transfer,ERC20 - ['BurnFee'],"pub struct BurnFeeTokenParams;
+impl Erc20Params for BurnFeeTokenParams {
+    const NAME: &'static str = ""BurnFeeToken"";
+    const SYMBOL: &'static str = ""BFT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct BurnFeeToken {
+        #[borrow]
+        Erc20<BurnFeeTokenParams> erc20;
+        fee_bps: u16 // basis points
+    }
+}
+
+#[public]
+#[inherit(Erc20<BurnFeeTokenParams>)]
+impl BurnFeeToken {
+    pub fn new(fee_bps: u16) -> Self {
+        let mut instance = Self::default();
+        instance.fee_bps = fee_bps;
+        instance
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        let fee = (amount * U256::from(self.fee_bps)) / U256::from(10000);
+        let transfer_amount = amount - fee;
+        // burn fee
+        self.erc20.burn(msg::sender(), fee)?;
+        self.erc20.transfer(to, transfer_amount)
+    }
+}"
+13,An NFT contract that stores a token URI for each token,ERC721 - ['PerTokenURI'],"use stylus_sdk::prelude::*;
+
+pub struct URICollectionParams;
+impl Erc721Params for URICollectionParams {
+    const NAME: &'static str = ""URICollection"";
+    const SYMBOL: &'static str = ""URIC"";
+    fn token_uri(_id: U256) -> String {
+        """".into() // We'll store URIs in separate storage, so default here
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct URICollection {
+        #[borrow]
+        Erc721<URICollectionParams> erc721;
+        token_uris: mapping(U256 => String)
+    }
+}
+
+#[public]
+#[inherit(Erc721<URICollectionParams>)]
+impl URICollection {
+    pub fn mint_with_uri(&mut self, to: Address, token_id: U256, uri: String) -> Result<(), Erc721Error> {
+        self.erc721.mint_with_id(to, token_id)?;
+        self.token_uris.setter(token_id).set(uri);
+        Ok(())
+    }
+
+    pub fn token_uri(&self, token_id: U256) -> Option<String> {
+        self.token_uris.get(token_id)
+    }
+}"
+14,A batch-minting NFT contract that mints a range of token IDs in one call,ERC721 - ['BatchMint'],"use stylus_sdk::prelude::*;
+
+pub struct BatchMintParams;
+impl Erc721Params for BatchMintParams {
+    const NAME: &'static str = ""BatchMintNFT"";
+    const SYMBOL: &'static str = ""BMN"";
+    fn token_uri(_id: U256) -> String {
+        ""https://example.com/metadata"".to_string()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct BatchMintNFT {
+        #[borrow]
+        Erc721<BatchMintParams> erc721;
+    }
+}
+
+#[public]
+#[inherit(Erc721<BatchMintParams>)]
+impl BatchMintNFT {
+    pub fn batch_mint(&mut self, to: Address, start_id: U256, end_id: U256) -> Result<(), Erc721Error> {
+        let mut token_id = start_id;
+        while token_id <= end_id {
+            self.erc721.mint_with_id(to, token_id)?;
+            token_id += U256::one();
+        }
+        Ok(())
+    }
+}"
+15,NFT contract with a burn function for the token owner,ERC721 - ['BurnableNFT'],"use stylus_sdk::prelude::*;
+
+pub struct BurnableNFTParams;
+impl Erc721Params for BurnableNFTParams {
+    const NAME: &'static str = ""BurnableNFT"";
+    const SYMBOL: &'static str = ""BNFT"";
+    fn token_uri(_id: U256) -> String {
+        ""https://burnable.example/"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct BurnableNFT {
+        #[borrow]
+        Erc721<BurnableNFTParams> erc721;
+    }
+}
+
+#[public]
+#[inherit(Erc721<BurnableNFTParams>)]
+impl BurnableNFT {
+    pub fn burn_token(&mut self, token_id: U256) -> Result<(), Erc721Error> {
+        let owner = self.erc721.owner_of(token_id)?;
+        if owner != msg::sender() {
+            return Err(Erc721Error::Custom(""Not the owner"".into()));
+        }
+        self.erc721.burn(owner, token_id)
+    }
+}"
+16,"NFT contract that supports operator approvals, letting a designated address transfer tokens on behalf of the owner",ERC721 - ['OperatorApprovals'],"use stylus_sdk::prelude::*;
+
+pub struct OperatorNFTParams;
+impl Erc721Params for OperatorNFTParams {
+    const NAME: &'static str = ""OperatorNFT"";
+    const SYMBOL: &'static str = ""ONFT"";
+    fn token_uri(_id: U256) -> String {
+        ""https://operator.example/"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct OperatorNFT {
+        #[borrow]
+        Erc721<OperatorNFTParams> erc721;
+    }
+}
+
+#[public]
+#[inherit(Erc721<OperatorNFTParams>)]
+impl OperatorNFT {
+    pub fn set_approval_for_operator(&mut self, operator: Address, approved: bool) -> Result<(), Erc721Error> {
+        self.erc721.set_approval_for_all(msg::sender(), operator, approved)
+    }
+
+    pub fn transfer_from_operator(&mut self, from: Address, to: Address, token_id: U256) -> Result<(), Erc721Error> {
+        self.erc721.transfer_from(from, to, token_id)
+    }
+}"
+17,Minimal proxy contract that delegates calls to a logic contract for an NFT logic,"Proxy - ['NFTProxy', 'Upgradable']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct NFTProxy {
+        logic: Address,
+        owner: Address
+    }
+}
+
+#[public]
+impl NFTProxy {
+    pub fn new(logic_addr: Address) -> Self {
+        let mut instance = Self::default();
+        instance.logic = logic_addr;
+        instance.owner = msg::sender();
+        instance
+    }
+
+    pub fn upgrade(&mut self, new_logic: Address) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner can upgrade"".into());
+        }
+        self.logic = new_logic;
+        Ok(())
+    }
+
+    #[fallback]
+    pub fn fallback(&self) {
+        // delegate calls to logic
+        // stylus_sdk::delegate_call(self.logic);
+    }
+}"
+18,"A basic ""Hello Stylus"" contract tutorial that logs a greeting event",Tutorial - ['EventLogging'],"use stylus_sdk::prelude::*;
+
+#[derive(Debug, Clone)]
+pub struct Greeting {
+    pub from: Address,
+    pub message: String
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct HelloStylus {
+        greeting: String
+    }
+}
+
+#[public]
+impl HelloStylus {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.greeting = ""Hello Stylus"".into();
+        instance
+    }
+
+    pub fn say_hello(&self) {
+        let event = Greeting {
+            from: msg::sender(),
+            message: self.greeting.clone()
+        };
+        evm::log(event);
+    }
+}"
+19,A contract that manages a list of addresses allowed to call certain functions (a simple access control list),Utility - ['AccessControl'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct AccessControl {
+        admin: Address,
+        allowed: mapping(Address => bool)
+    }
+}
+
+#[public]
+impl AccessControl {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.admin = msg::sender();
+        instance
+    }
+
+    pub fn add_allowed(&mut self, user: Address) -> Result<(), String> {
+        if msg::sender() != self.admin {
+            return Err(""Only admin can add allowed"".into());
+        }
+        self.allowed.setter(user).set(true);
+        Ok(())
+    }
+
+    pub fn restricted_action(&self) -> Result<(), String> {
+        if !self.allowed.get(msg::sender()) {
+            return Err(""Caller not allowed"".into());
+        }
+        // do something restricted
+        Ok(())
+    }
+}"
+20,Chess contract variant that includes a function to forfeit the game,"Game - ['ChessGame', 'Forfeit']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ChessGame {
+        board: [u8; 64],
+        player1: Address,
+        player2: Address,
+        current_player: Address,
+        game_over: bool
+    }
+}
+
+#[public]
+impl ChessGame {
+    pub fn new(p1: Address, p2: Address) -> Self {
+        let mut instance = Self::default();
+        instance.player1 = p1;
+        instance.player2 = p2;
+        instance.current_player = p1;
+        instance.board = [0; 64];
+        instance
+    }
+
+    pub fn move_piece(&mut self, from: usize, to: usize) -> Result<(), String> {
+        if self.game_over {
+            return Err(""Game already over"".into());
+        }
+        if msg::sender() != self.current_player {
+            return Err(""Not your turn"".into());
+        }
+        // minimal check for valid move
+        let piece = self.board[from];
+        self.board[from] = 0;
+        self.board[to] = piece;
+
+        // switch player
+        self.current_player = if self.current_player == self.player1 {
+            self.player2
+        } else {
+            self.player1
+        };
+
+        Ok(())
+    }
+
+    pub fn forfeit(&mut self) -> Result<(), String> {
+        if self.game_over {
+            return Err(""Game is already over"".into());
+        }
+        if msg::sender() != self.player1 && msg::sender() != self.player2 {
+            return Err(""Not a player"".into());
+        }
+        self.game_over = true;
+        Ok(())
+    }
+}"
+21,A contract that auctions NFTs in a sealed-bid format,"Auction - ['SealedBid', 'NFTAuction']","use stylus_sdk::prelude::*;
+
+#[derive(Default)]
+pub struct Bid {
+    pub bidder: Address,
+    pub amount: U256,
+    pub revealed: bool
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct SealedBidAuction {
+        owner: Address,
+        nft_address: Address,
+        token_id: U256,
+        bids: mapping(Address => Bid),
+        ended: bool
+    }
+}
+
+#[public]
+impl SealedBidAuction {
+    pub fn new(nft: Address, token_id: U256) -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance.nft_address = nft;
+        instance.token_id = token_id;
+        instance
+    }
+
+    pub fn place_bid(&mut self, hidden_amount: U256) {
+        // Bids are hidden, in reality you'd store a hash of the amount + secret.
+        let b = Bid {
+            bidder: msg::sender(),
+            amount: hidden_amount,
+            revealed: false
+        };
+        self.bids.setter(msg::sender()).set(b);
+    }
+
+    pub fn reveal_bid(&mut self, real_amount: U256) -> Result<(), String> {
+        let mut b = self.bids.get(msg::sender());
+        if b.bidder == Address::ZERO {
+            return Err(""No bid found"".into());
+        }
+        b.revealed = true;
+        b.amount = real_amount; // in a real contract you'd check the hash matches
+        self.bids.setter(msg::sender()).set(b);
+        Ok(())
+    }
+
+    pub fn end_auction(&mut self) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner can end"".into());
+        }
+        if self.ended {
+            return Err(""Already ended"".into());
+        }
+        // find highest revealed bid
+        let mut highest: Option<(Address, U256)> = None;
+        // in reality, you'd iterate over all bidders.
+        // stylus doesn't allow normal iteration, so you'd store bidder addresses or do external checks.
+        // We'll skip details.
+        self.ended = true;
+        Ok(())
+    }
+}"
+22,A contract that acts as a multi-signature wallet with 2-of-3 approval,"Wallet - ['MultiSig', '2of3']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MultiSigWallet {
+        owners: [Address; 3],
+        approvals: mapping(u64 => u8),
+        tx_count: u64
+    }
+}
+
+#[public]
+impl MultiSigWallet {
+    pub fn new(o1: Address, o2: Address, o3: Address) -> Self {
+        let mut instance = Self::default();
+        instance.owners = [o1, o2, o3];
+        instance
+    }
+
+    pub fn submit_transaction(&mut self) -> u64 {
+        let tx_id = self.tx_count;
+        self.tx_count += 1;
+        tx_id
+    }
+
+    pub fn approve(&mut self, tx_id: u64) -> Result<(), String> {
+        let sender = msg::sender();
+        if !self.is_owner(sender) {
+            return Err(""Not an owner"".into());
+        }
+        let current_approvals = self.approvals.get(tx_id);
+        self.approvals.setter(tx_id).set(current_approvals + 1);
+        Ok(())
+    }
+
+    pub fn execute(&self, tx_id: u64) -> Result<(), String> {
+        if self.approvals.get(tx_id) < 2 {
+            return Err(""Not enough approvals"".into());
+        }
+        // Execute some transaction
+        Ok(())
+    }
+
+    fn is_owner(&self, addr: Address) -> bool {
+        self.owners.contains(&addr)
+    }
+}"
+23,A simple vending machine that sells a single item for a fixed price in an ERC20 token,"Commerce - ['VendingMachine', 'ERC20Integration']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct SimpleVending {
+        owner: Address,
+        price: U256,
+        token_address: Address,
+        stock: u32
+    }
+}
+
+#[public]
+impl SimpleVending {
+    pub fn new(token: Address, price: U256, initial_stock: u32) -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance.price = price;
+        instance.token_address = token;
+        instance.stock = initial_stock;
+        instance
+    }
+
+    pub fn buy(&mut self, quantity: u32) -> Result<(), String> {
+        if self.stock < quantity {
+            return Err(""Insufficient stock"".into());
+        }
+        let total_cost = self.price * U256::from(quantity);
+        // Call token contract: transferFrom(msg::sender(), self, total_cost)
+        self.stock -= quantity;
+        Ok(())
+    }
+}"
+24,A contract that tracks a list of whitelisted addresses for an NFT mint function,NFT - ['Whitelist'],"use stylus_sdk::prelude::*;
+
+pub struct WhitelistNFTParams;
+impl Erc721Params for WhitelistNFTParams {
+    const NAME: &'static str = ""WhitelistNFT"";
+    const SYMBOL: &'static str = ""WNFT"";
+    fn token_uri(_id: U256) -> String {
+        ""https://whitelist.example/"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct WhitelistNFT {
+        #[borrow]
+        Erc721<WhitelistNFTParams> erc721;
+        whitelisted: mapping(Address => bool)
+    }
+}
+
+#[public]
+#[inherit(Erc721<WhitelistNFTParams>)]
+impl WhitelistNFT {
+    pub fn add_to_whitelist(&mut self, user: Address) {
+        // Only contract deployer can call this, if desired
+        self.whitelisted.setter(user).set(true);
+    }
+
+    pub fn mint_if_whitelisted(&mut self) -> Result<(), Erc721Error> {
+        if !self.whitelisted.get(msg::sender()) {
+            return Err(Erc721Error::Custom(""Not whitelisted"".into()));
+        }
+        self.erc721.mint(msg::sender())
+    }
+}"
+25,A basic proxy contract that can be used for upgrading ERC20 logic with an initialize function,"Proxy - ['Initialize', 'Upgradable']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ERC20Proxy {
+        logic_contract: Address,
+        owner: Address,
+        initialized: bool
+    }
+}
+
+#[public]
+impl ERC20Proxy {
+    pub fn init(&mut self, logic: Address) -> Result<(), String> {
+        if self.initialized {
+            return Err(""Already initialized"".into());
+        }
+        self.logic_contract = logic;
+        self.owner = msg::sender();
+        self.initialized = true;
+        Ok(())
+    }
+
+    pub fn upgrade(&mut self, new_logic: Address) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner"".into());
+        }
+        self.logic_contract = new_logic;
+        Ok(())
+    }
+
+    #[fallback]
+    pub fn fallback(&self) {
+        // stylus_sdk::delegate_call(self.logic_contract);
+    }
+}"
+26,An on-chain puzzle game that requires solving a simple math puzzle to claim a reward,"Game - ['Puzzle', 'Reward']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct PuzzleGame {
+        reward_claimed: bool,
+        solution: u32,
+        reward_amount: U256,
+        token_address: Address
+    }
+}
+
+#[public]
+impl PuzzleGame {
+    pub fn new(sol: u32, token_addr: Address, amount: U256) -> Self {
+        let mut instance = Self::default();
+        instance.solution = sol;
+        instance.token_address = token_addr;
+        instance.reward_amount = amount;
+        instance.reward_claimed = false;
+        instance
+    }
+
+    pub fn solve_puzzle(&mut self, guess: u32) -> Result<(), String> {
+        if self.reward_claimed {
+            return Err(""Reward already claimed"".into());
+        }
+        if guess == self.solution {
+            // transfer reward to solver
+            // e.g., ERC20(self.token_address).transfer(msg::sender(), self.reward_amount)
+            self.reward_claimed = true;
+            Ok(())
+        } else {
+            Err(""Wrong solution"".into())
+        }
+    }
+}"
+27,A basic ownership-based contract with a function that can only be called by the owner,Utility - ['Ownership'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct OwnedContract {
+        owner: Address,
+        secret_data: u64
+    }
+}
+
+#[public]
+impl OwnedContract {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance
+    }
+
+    pub fn update_secret(&mut self, new_value: u64) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner can update secret"".into());
+        }
+        self.secret_data = new_value;
+        Ok(())
+    }
+
+    pub fn read_secret(&self) -> u64 {
+        self.secret_data
+    }
+}"
+28,A dynamic registry contract that maps addresses to a string label,Utility - ['Registry'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct AddressRegistry {
+        registry: mapping(Address => String)
+    }
+}
+
+#[public]
+impl AddressRegistry {
+    pub fn register(&mut self, label: String) {
+        let sender = msg::sender();
+        self.registry.setter(sender).set(label);
+    }
+
+    pub fn lookup(&self, addr: Address) -> Option<String> {
+        self.registry.get(addr)
+    }
+}"
+29,ERC721 contract that requires a certain ERC20 token balance to mint,NFT - ['TokenGating'],"use stylus_sdk::prelude::*;
+
+pub struct TokenGateParams;
+impl Erc721Params for TokenGateParams {
+    const NAME: &'static str = ""TokenGatedNFT"";
+    const SYMBOL: &'static str = ""TG-NFT"";
+    fn token_uri(_id: U256) -> String {
+        ""https://tokengate.example/metadata"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct TokenGatedNFT {
+        #[borrow]
+        Erc721<TokenGateParams> erc721;
+        required_token_balance: U256,
+        erc20_address: Address
+    }
+}
+
+#[public]
+#[inherit(Erc721<TokenGateParams>)]
+impl TokenGatedNFT {
+    pub fn new(token_addr: Address, required_balance: U256) -> Self {
+        let mut instance = Self::default();
+        instance.erc20_address = token_addr;
+        instance.required_token_balance = required_balance;
+        instance
+    }
+
+    pub fn mint_if_eligible(&mut self) -> Result<(), Erc721Error> {
+        // Check ERC20 balance of msg.sender
+        // e.g., if balanceOf(msg.sender) >= self.required_token_balance
+        self.erc721.mint(msg::sender())
+    }
+}"
+30,A time-based puzzle that only accepts solutions within a set timeframe,Game - ['TimeLimit'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct TimedPuzzle {
+        solution: u32,
+        deadline: u64,
+        solved: bool
+    }
+}
+
+#[public]
+impl TimedPuzzle {
+    pub fn new(sol: u32, until: u64) -> Self {
+        let mut instance = Self::default();
+        instance.solution = sol;
+        instance.deadline = until;
+        instance.solved = false;
+        instance
+    }
+
+    pub fn solve(&mut self, guess: u32) -> Result<(), String> {
+        if self.solved {
+            return Err(""Already solved"".into());
+        }
+        let now = block_timestamp();
+        if now > self.deadline {
+            return Err(""Puzzle expired"".into());
+        }
+        if guess == self.solution {
+            self.solved = true;
+            Ok(())
+        } else {
+            Err(""Incorrect"".into())
+        }
+    }
+}"
+31,"ERC20-based membership contract, where holding tokens grants membership status",ERC20 - ['Membership'],"use stylus_sdk::prelude::*;
+
+pub struct MemberTokenParams;
+impl Erc20Params for MemberTokenParams {
+    const NAME: &'static str = ""MemberToken"";
+    const SYMBOL: &'static str = ""MBR"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MemberToken {
+        #[borrow]
+        Erc20<MemberTokenParams> erc20;
+        membership_threshold: U256
+    }
+}
+
+#[public]
+#[inherit(Erc20<MemberTokenParams>)]
+impl MemberToken {
+    pub fn new(threshold: U256) -> Self {
+        let mut instance = Self::default();
+        instance.membership_threshold = threshold;
+        instance
+    }
+
+    pub fn is_member(&self, addr: Address) -> bool {
+        let bal = self.erc20.balance_of(addr);
+        bal >= self.membership_threshold
+    }
+}"
+32,NFT that has a custom on-transfer hook to record transfer events in an internal list,NFT - ['CustomHooks'],"use stylus_sdk::prelude::*;
+
+pub struct HookNFTParams;
+impl Erc721Params for HookNFTParams {
+    const NAME: &'static str = ""HookNFT"";
+    const SYMBOL: &'static str = ""HNFT"";
+    fn token_uri(_id: U256) -> String {
+        ""https://hooknft.example/"".into()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransferRecord {
+    pub from: Address,
+    pub to: Address,
+    pub token_id: U256
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct HookNFT {
+        #[borrow]
+        Erc721<HookNFTParams> erc721;
+        transfers: Vec<TransferRecord>
+    }
+}
+
+#[public]
+#[inherit(Erc721<HookNFTParams>)]
+impl HookNFT {
+    pub fn on_transfer(&mut self, from: Address, to: Address, token_id: U256) {
+        let record = TransferRecord {
+            from,
+            to,
+            token_id
+        };
+        self.transfers.push(record);
+    }
+
+    pub fn get_transfer_history(&self) -> Vec<TransferRecord> {
+        self.transfers.clone()
+    }
+}"
+33,A lottery contract that selects a random winner among ticket holders (pseudo-randomness only),"Game - ['Lottery', 'PseudoRandom']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Lottery {
+        tickets: Vec<Address>,
+        winner: Address,
+        finished: bool
+    }
+}
+
+#[public]
+impl Lottery {
+    pub fn buy_ticket(&mut self) {
+        self.tickets.push(msg::sender());
+    }
+
+    pub fn draw(&mut self) -> Result<Address, String> {
+        if self.finished {
+            return Err(""Already drawn"".into());
+        }
+        if self.tickets.is_empty() {
+            return Err(""No tickets"".into());
+        }
+        // Pseudo-random approach
+        let random_index = block_number() as usize % self.tickets.len();
+        let selected = self.tickets[random_index];
+        self.winner = selected;
+        self.finished = true;
+        Ok(selected)
+    }
+}"
+34,"A contract that allows the owner to switch the logic for calculating a tax rate in a function, enabling dynamic behavior",Utility - ['DynamicLogic'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct DynamicTax {
+        owner: Address,
+        tax_logic: Address // Another contract that calculates the tax
+    }
+}
+
+#[public]
+impl DynamicTax {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance
+    }
+
+    pub fn set_tax_logic(&mut self, logic: Address) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner"".into());
+        }
+        self.tax_logic = logic;
+        Ok(())
+    }
+
+    pub fn get_tax(&self, amount: U256) -> U256 {
+        // pseudo-code: delegate call to self.tax_logic to calculate the tax
+        // stylus_sdk::delegate_call(...)
+        // for now just return a placeholder
+        amount / U256::from(10)
+    }
+}"
+35,A contract that implements a merkle tree whitelist for NFT minting,NFT - ['MerkleProof'],"use stylus_sdk::prelude::*;
+
+pub struct MerkleNFTParams;
+impl Erc721Params for MerkleNFTParams {
+    const NAME: &'static str = ""MerkleNFT"";
+    const SYMBOL: &'static str = ""MRK"";
+    fn token_uri(_id: U256) -> String {
+        ""https://merkle.example/"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MerkleNFT {
+        #[borrow]
+        Erc721<MerkleNFTParams> erc721;
+        merkle_root: [u8; 32]
+    }
+}
+
+#[public]
+#[inherit(Erc721<MerkleNFTParams>)]
+impl MerkleNFT {
+    pub fn set_merkle_root(&mut self, root: [u8; 32]) {
+        self.merkle_root = root;
+    }
+
+    pub fn mint_if_in_merkle(&mut self, proof: Vec<[u8; 32]>) -> Result<(), Erc721Error> {
+        // pseudo-check: verify proof matches self.merkle_root
+        // if verified, mint
+        self.erc721.mint(msg::sender())
+    }
+}"
+36,A proxy-based NFT contract that can switch out the metadata logic by referencing a different library for token URIs,NFT - ['ProxyMetadata'],"use stylus_sdk::prelude::*;
+
+pub struct ProxyNFTParams;
+impl Erc721Params for ProxyNFTParams {
+    const NAME: &'static str = ""ProxyNFT"";
+    const SYMBOL: &'static str = ""PXN"";
+    fn token_uri(_id: U256) -> String {
+        """".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ProxyNFT {
+        #[borrow]
+        Erc721<ProxyNFTParams> erc721;
+        metadata_logic: Address
+    }
+}
+
+#[public]
+#[inherit(Erc721<ProxyNFTParams>)]
+impl ProxyNFT {
+    pub fn set_metadata_logic(&mut self, logic: Address) {
+        self.metadata_logic = logic;
+    }
+
+    pub fn external_token_uri(&self, token_id: U256) -> String {
+        // pseudo-code: delegate call to metadata_logic for URI
+        // stylus_sdk::delegate_call(...)
+        ""https://example.com/proxy"".into()
+    }
+}"
+37,"A contract that stores user-submitted messages, with an event log for each new message","Utility - ['EventLogging', 'MessageStorage']","use stylus_sdk::prelude::*;
+
+#[derive(Debug, Clone)]
+pub struct MessageEvent {
+    pub sender: Address,
+    pub content: String
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MessageBoard {
+        messages: Vec<String>
+    }
+}
+
+#[public]
+impl MessageBoard {
+    pub fn post_message(&mut self, content: String) {
+        self.messages.push(content.clone());
+        let event = MessageEvent {
+            sender: msg::sender(),
+            content
+        };
+        evm::log(event);
+    }
+
+    pub fn get_message_count(&self) -> usize {
+        self.messages.len()
+    }
+
+    pub fn read_message(&self, index: usize) -> Option<String> {
+        self.messages.get(index).cloned()
+    }
+}"
+38,"ERC20 contract that implements a reflection mechanism, redistributing a percentage of each transfer to all holders",ERC20 - ['Reflection'],"pub struct ReflectTokenParams;
+impl Erc20Params for ReflectTokenParams {
+    const NAME: &'static str = ""ReflectToken"";
+    const SYMBOL: &'static str = ""RFT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ReflectToken {
+        #[borrow]
+        Erc20<ReflectTokenParams> erc20;
+        total_reflected: U256,
+        reflection_fee_bps: u16
+    }
+}
+
+#[public]
+#[inherit(Erc20<ReflectTokenParams>)]
+impl ReflectToken {
+    pub fn new(fee_bps: u16) -> Self {
+        let mut instance = Self::default();
+        instance.reflection_fee_bps = fee_bps;
+        instance
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        let fee = (amount * U256::from(self.reflection_fee_bps)) / U256::from(10000);
+        let transfer_amount = amount - fee;
+        self.total_reflected += fee;
+        self.erc20._transfer(msg::sender(), to, transfer_amount)
+    }
+
+    pub fn claim_reflections(&mut self) {
+        // pseudo-logic: distribute self.total_reflected among holders
+        // not fully implemented here
+    }
+}"
+39,A device rental contract where users pay ERC20 tokens to rent a device for a certain duration,"Commerce - ['Rental', 'ERC20Integration']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct DeviceRental {
+        owner: Address,
+        rate_per_hour: U256,
+        token_address: Address,
+        rented_until: mapping(Address => u64)
+    }
+}
+
+#[public]
+impl DeviceRental {
+    pub fn new(token: Address, rate: U256) -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance.token_address = token;
+        instance.rate_per_hour = rate;
+        instance
+    }
+
+    pub fn rent_device(&mut self, hours: u64) -> Result<(), String> {
+        let cost = self.rate_per_hour * U256::from(hours);
+        // transfer tokens from renter to contract
+        let expiry = block_timestamp() + (hours * 3600);
+        self.rented_until.setter(msg::sender()).set(expiry);
+        Ok(())
+    }
+
+    pub fn is_rented(&self, user: Address) -> bool {
+        let now = block_timestamp();
+        now < self.rented_until.get(user)
+    }
+}"
+40,"A stylus-based English Auction for an ERC20 token, tracking highest bidder and finalizing after time ends","Auction - ['EnglishAuction', 'ERC20Based']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ERC20Auction {
+        token_address: Address,
+        end_time: u64,
+        highest_bid: U256,
+        highest_bidder: Address,
+        finished: bool
+    }
+}
+
+#[public]
+impl ERC20Auction {
+    pub fn new(token: Address, end: u64) -> Self {
+        let mut instance = Self::default();
+        instance.token_address = token;
+        instance.end_time = end;
+        instance
+    }
+
+    pub fn bid(&mut self, amount: U256) -> Result<(), String> {
+        if block_timestamp() > self.end_time {
+            return Err(""Auction ended"".into());
+        }
+        if amount <= self.highest_bid {
+            return Err(""Bid not high enough"".into());
+        }
+        // transferFrom bidder to this contract
+        self.highest_bid = amount;
+        self.highest_bidder = msg::sender();
+        Ok(())
+    }
+
+    pub fn finalize(&mut self) -> Result<(), String> {
+        if block_timestamp() < self.end_time {
+            return Err(""Auction not ended yet"".into());
+        }
+        if self.finished {
+            return Err(""Already finalized"".into());
+        }
+        self.finished = true;
+        // token stays here or is transferred to auction creator, etc.
+        Ok(())
+    }
+}"
+41,A contract that enforces a minimum deposit in ETH (represented as Arbitrum's native currency in Stylus) to do an action,Utility - ['NativeCurrency'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MinDeposit {
+        min_amount: U256,
+        depositors: mapping(Address => U256)
+    }
+}
+
+#[public]
+impl MinDeposit {
+    pub fn new(min_amt: U256) -> Self {
+        let mut instance = Self::default();
+        instance.min_amount = min_amt;
+        instance
+    }
+
+    pub fn deposit(&mut self) -> Result<(), String> {
+        let value_sent = msg::value();
+        if value_sent < self.min_amount {
+            return Err(""Insufficient deposit"".into());
+        }
+        let current = self.depositors.get(msg::sender());
+        self.depositors.setter(msg::sender()).set(current + value_sent);
+        Ok(())
+    }
+}"
+42,An NFT rental contract that locks the NFT in the contract until the rental period ends,NFT - ['NFTRental'],"use stylus_sdk::prelude::*;
+
+pub struct RentalNFTParams;
+impl Erc721Params for RentalNFTParams {
+    const NAME: &'static str = ""RentalNFT"";
+    const SYMBOL: &'static str = ""RNT"";
+    fn token_uri(_id: U256) -> String {
+        ""https://rentalnft.example/"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct RentalNFT {
+        #[borrow]
+        Erc721<RentalNFTParams> erc721;
+        rentals: mapping(U256 => u64)
+    }
+}
+
+#[public]
+#[inherit(Erc721<RentalNFTParams>)]
+impl RentalNFT {
+    pub fn rent_out(&mut self, token_id: U256, hours: u64) -> Result<(), Erc721Error> {
+        let owner = self.erc721.owner_of(token_id)?;
+        if owner != msg::sender() {
+            return Err(Erc721Error::Custom(""Not owner"".into()));
+        }
+        // transfer NFT to contract for the duration
+        self.erc721.transfer_from(owner, address_of_self(), token_id)?;
+        let expiry = block_timestamp() + (hours * 3600);
+        self.rentals.setter(token_id).set(expiry);
+        Ok(())
+    }
+
+    pub fn reclaim(&mut self, token_id: U256) -> Result<(), Erc721Error> {
+        let expiry = self.rentals.get(token_id);
+        if block_timestamp() < expiry {
+            return Err(Erc721Error::Custom(""Rental still active"".into()));
+        }
+        // transfer back to original owner (in real usage, track original owners)
+        self.erc721.transfer_from(address_of_self(), msg::sender(), token_id)
+    }
+}"
+43,A credit-based system that tracks user credit scores and only allows them to borrow tokens if their score is high enough,ERC20 - ['CreditCheck'],"use stylus_sdk::prelude::*;
+
+pub struct CreditTokenParams;
+impl Erc20Params for CreditTokenParams {
+    const NAME: &'static str = ""CreditToken"";
+    const SYMBOL: &'static str = ""CRT"";
+    const DECIMALS: u8 = 18;
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct CreditSystem {
+        #[borrow]
+        Erc20<CreditTokenParams> erc20;
+        credit_scores: mapping(Address => u32),
+        owner: Address
+    }
+}
+
+#[public]
+#[inherit(Erc20<CreditTokenParams>)]
+impl CreditSystem {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance
+    }
+
+    pub fn set_credit_score(&mut self, user: Address, score: u32) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner"".into());
+        }
+        self.credit_scores.setter(user).set(score);
+        Ok(())
+    }
+
+    pub fn borrow_tokens(&mut self, amount: U256) -> Result<(), String> {
+        let score = self.credit_scores.get(msg::sender());
+        if score < 700 {
+            return Err(""Credit score too low"".into());
+        }
+        self.erc20.mint(msg::sender(), amount).unwrap();
+        Ok(())
+    }
+}"
+44,"A contract that tracks user-submitted reviews, each with a rating and a text comment",Utility - ['UserReviews'],"use stylus_sdk::prelude::*;
+
+#[derive(Clone, Debug)]
+pub struct Review {
+    pub reviewer: Address,
+    pub rating: u8,
+    pub comment: String
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ReviewBoard {
+        reviews: Vec<Review>
+    }
+}
+
+#[public]
+impl ReviewBoard {
+    pub fn submit_review(&mut self, rating: u8, comment: String) -> Result<(), String> {
+        if rating > 5 {
+            return Err(""Max rating is 5"".into());
+        }
+        let review = Review {
+            reviewer: msg::sender(),
+            rating,
+            comment
+        };
+        self.reviews.push(review);
+        Ok(())
+    }
+
+    pub fn get_review_count(&self) -> usize {
+        self.reviews.len()
+    }
+
+    pub fn get_review(&self, index: usize) -> Option<Review> {
+        self.reviews.get(index).cloned()
+    }
+}"
+45,An NFT that automatically sends a referral fee to the address that introduced the minter,NFT - ['ReferralFee'],"use stylus_sdk::prelude::*;
+
+pub struct ReferralNFTParams;
+impl Erc721Params for ReferralNFTParams {
+    const NAME: &'static str = ""ReferralNFT"";
+    const SYMBOL: &'static str = ""RNF"";
+    fn token_uri(_id: U256) -> String {
+        ""https://referralnft.example/"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ReferralNFT {
+        #[borrow]
+        Erc721<ReferralNFTParams> erc721;
+        referral_map: mapping(Address => Address) // user -> referrer
+    }
+}
+
+#[public]
+#[inherit(Erc721<ReferralNFTParams>)]
+impl ReferralNFT {
+    pub fn set_referrer(&mut self, referrer: Address) {
+        self.referral_map.setter(msg::sender()).set(referrer);
+    }
+
+    pub fn mint_with_referral(&mut self) -> Result<(), Erc721Error> {
+        let minter = msg::sender();
+        let referrer = self.referral_map.get(minter);
+        // pseudo-logic: send some fee to referrer if not zero
+        self.erc721.mint(minter)
+    }
+}"
+46,A proxy that upgrades both ERC20 and ERC721 logic addresses simultaneously (dual-proxy),Proxy - ['DualLogicUpgrade'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct DualProxy {
+        owner: Address,
+        erc20_logic: Address,
+        erc721_logic: Address
+    }
+}
+
+#[public]
+impl DualProxy {
+    pub fn new(e20: Address, e721: Address) -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance.erc20_logic = e20;
+        instance.erc721_logic = e721;
+        instance
+    }
+
+    pub fn upgrade_erc20(&mut self, new_logic: Address) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner"".into());
+        }
+        self.erc20_logic = new_logic;
+        Ok(())
+    }
+
+    pub fn upgrade_erc721(&mut self, new_logic: Address) -> Result<(), String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner"".into());
+        }
+        self.erc721_logic = new_logic;
+        Ok(())
+    }
+
+    #[fallback]
+    pub fn fallback(&self) {
+        // check some selector to decide whether to delegate to erc20_logic or erc721_logic
+    }
+}"
+47,A forwarder contract that can call another contract with provided data (meta-transaction style),Utility - ['Forwarder'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Forwarder {
+        owner: Address
+    }
+}
+
+#[public]
+impl Forwarder {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance
+    }
+
+    pub fn forward_call(&self, target: Address, data: Vec<u8>) -> Result<(), String> {
+        // In a real environment, you'd do a low-level call with data
+        // stylus_sdk::call(target, data);
+        Ok(())
+    }
+}"
+48,A library contract that provides a math utility function for other contracts to delegateCall,Utility - ['LibraryContract'],"use stylus_sdk::prelude::*;
+
+#[library]
+pub mod MathLib {
+    use super::*;
+
+    pub fn add(a: U256, b: U256) -> U256 {
+        a + b
+    }
+
+    pub fn mul(a: U256, b: U256) -> U256 {
+        a * b
+    }
+}"
+49,A basic name service that lets users register a domain name to their address for a certain registration fee,Utility - ['NameService'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct NameService {
+        fee: U256,
+        domain_to_owner: mapping(String => Address)
+    }
+}
+
+#[public]
+impl NameService {
+    pub fn new(reg_fee: U256) -> Self {
+        let mut instance = Self::default();
+        instance.fee = reg_fee;
+        instance
+    }
+
+    pub fn register_domain(&mut self, domain: String) -> Result<(), String> {
+        // user must send 'fee' as msg.value
+        if self.domain_to_owner.get(domain.clone()) != Address::ZERO {
+            return Err(""Domain taken"".into());
+        }
+        self.domain_to_owner.setter(domain).set(msg::sender());
+        Ok(())
+    }
+
+    pub fn lookup_owner(&self, domain: String) -> Address {
+        self.domain_to_owner.get(domain)
+    }
+}"
+50,A stylus-chess variant with 3 players on a 12x12 board,Game - ['MultiPlayerChess'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ThreePlayerChess {
+        board: [u8; 144],
+        players: [Address; 3],
+        current_player_idx: u8,
+        game_over: bool
+    }
+}
+
+#[public]
+impl ThreePlayerChess {
+    pub fn new(p1: Address, p2: Address, p3: Address) -> Self {
+        let mut instance = Self::default();
+        instance.players = [p1, p2, p3];
+        instance.board = [0; 144];
+        instance
+    }
+
+    pub fn move_piece(&mut self, from: usize, to: usize) -> Result<(), String> {
+        if self.game_over {
+            return Err(""Game is over"".into());
+        }
+        if msg::sender() != self.players[self.current_player_idx as usize] {
+            return Err(""Not your turn"".into());
+        }
+        // minimal validation
+        let piece = self.board[from];
+        self.board[from] = 0;
+        self.board[to] = piece;
+        // next player
+        self.current_player_idx = (self.current_player_idx + 1) % 3;
+        Ok(())
+    }
+}"
+51,An ERC20 contract that implements reentrancy guards on all external calls,ERC20 - ['ReentrancyGuard'],"#[derive(Default)]
+pub struct ReentrancySafeParams;
+impl Erc20Params for ReentrancySafeParams {
+    const NAME: &'static str = ""ReentSafeToken"";
+    const SYMBOL: &'static str = ""RST"";
+    const DECIMALS: u8 = 18;
+}
+
+use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ReentrancySafeERC20 {
+        #[borrow]
+        Erc20<ReentrancySafeParams> erc20;
+        locked: bool
+    }
+}
+
+#[public]
+#[inherit(Erc20<ReentrancySafeParams>)]
+impl ReentrancySafeERC20 {
+    pub fn lock(&mut self) -> Result<(), String> {
+        if self.locked {
+            return Err(""Reentrant call"".into());
+        }
+        self.locked = true;
+        Ok(())
+    }
+
+    pub fn unlock(&mut self) {
+        self.locked = false;
+    }
+
+    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {
+        self.lock().map_err(|e| Erc20Error::Custom(e))?;
+        let result = self.erc20.transfer(to, amount);
+        self.unlock();
+        result
+    }
+}"
+52,An English Auction for an NFT that automatically sends 10% of the winning bid to a charity address,"Auction - ['CharityFee', 'NFTAuction']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct CharityNFTAuction {
+        nft_address: Address,
+        token_id: U256,
+        charity: Address,
+        highest_bid: U256,
+        highest_bidder: Address,
+        ended: bool
+    }
+}
+
+#[public]
+impl CharityNFTAuction {
+    pub fn new(nft: Address, id: U256, charity_addr: Address) -> Self {
+        let mut instance = Self::default();
+        instance.nft_address = nft;
+        instance.token_id = id;
+        instance.charity = charity_addr;
+        instance
+    }
+
+    pub fn bid(&mut self, amount: U256) -> Result<(), String> {
+        if self.ended {
+            return Err(""Auction ended"".into());
+        }
+        if amount <= self.highest_bid {
+            return Err(""Bid not high enough"".into());
+        }
+        self.highest_bid = amount;
+        self.highest_bidder = msg::sender();
+        Ok(())
+    }
+
+    pub fn end_auction(&mut self) -> Result<(), String> {
+        if self.ended {
+            return Err(""Already ended"".into());
+        }
+        self.ended = true;
+        // 10% to charity
+        let charity_amount = self.highest_bid / U256::from(10);
+        let seller_amount = self.highest_bid - charity_amount;
+        // transfer these amounts accordingly (e.g., in a real scenario, ERC20 or native)
+        Ok(())
+    }
+}"
+53,"A stylus-chess contract that logs a ""Checkmate"" event when a move ends the game",Game - ['ChessCheckmate'],"use stylus_sdk::prelude::*;
+
+#[derive(Debug, Clone)]
+pub struct CheckmateEvent {
+    pub winner: Address
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct ChessPlus {
+        board: [u8; 64],
+        white: Address,
+        black: Address,
+        turn: Address,
+        game_over: bool
+    }
+}
+
+#[public]
+impl ChessPlus {
+    pub fn new(w: Address, b: Address) -> Self {
+        let mut instance = Self::default();
+        instance.white = w;
+        instance.black = b;
+        instance.turn = w;
+        instance
+    }
+
+    pub fn move_piece(&mut self, from: usize, to: usize) -> Result<(), String> {
+        if self.game_over {
+            return Err(""Game ended"".into());
+        }
+        if msg::sender() != self.turn {
+            return Err(""Not your turn"".into());
+        }
+        // minimal logic
+        let piece = self.board[from];
+        self.board[from] = 0;
+        self.board[to] = piece;
+        // next turn
+        self.turn = if self.turn == self.white { self.black } else { self.white };
+        Ok(())
+    }
+
+    pub fn checkmate(&mut self) {
+        self.game_over = true;
+        let event = CheckmateEvent {
+            winner: msg::sender()
+        };
+        evm::log(event);
+    }
+}"
+54,"A contract that simulates a coin flip game, using a pseudo-random approach based on block hashes","Game - ['CoinFlip', 'PseudoRandom']","use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct CoinFlip {
+        total_heads: u64,
+        total_tails: u64
+    }
+}
+
+#[public]
+impl CoinFlip {
+    pub fn flip(&mut self) -> String {
+        // pseudo-random
+        let coin = block_hash(block_number()) % 2;
+        if coin == U256::zero() {
+            self.total_heads += 1;
+            ""Heads"".into()
+        } else {
+            self.total_tails += 1;
+            ""Tails"".into()
+        }
+    }
+
+    pub fn stats(&self) -> (u64, u64) {
+        (self.total_heads, self.total_tails)
+    }
+}"
+55,A workshop-based NFT that tracks a workshop ID in the token metadata,NFT - ['WorkshopID'],"use stylus_sdk::prelude::*;
+
+pub struct WorkshopParams;
+impl Erc721Params for WorkshopParams {
+    const NAME: &'static str = ""WorkshopNFT"";
+    const SYMBOL: &'static str = ""WSH"";
+    fn token_uri(_id: U256) -> String {
+        ""https://workshop.example/nft"".into()
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct WorkshopNFT {
+        #[borrow]
+        Erc721<WorkshopParams> erc721;
+        workshop_id: u32
+    }
+}
+
+#[public]
+#[inherit(Erc721<WorkshopParams>)]
+impl WorkshopNFT {
+    pub fn set_workshop_id(&mut self, id: u32) {
+        self.workshop_id = id;
+    }
+
+    pub fn mint_to_participant(&mut self, participant: Address) -> Result<(), Erc721Error> {
+        self.erc721.mint(participant)
+    }
+}"
+56,A stylus-create2 example that precomputes the address for a new contract before deploying it,Factory - ['Create2'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Create2Deployer {
+        owner: Address
+    }
+}
+
+#[public]
+impl Create2Deployer {
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance
+    }
+
+    pub fn compute_address(&self, salt: U256) -> Address {
+        // pseudo-code: stylus_sdk::create2_address(self, salt, init_code)
+        Address::ZERO
+    }
+
+    pub fn deploy(&mut self, salt: U256, code: Vec<u8>) -> Result<Address, String> {
+        if msg::sender() != self.owner {
+            return Err(""Only owner"".into());
+        }
+        // stylus_sdk::create2_deploy(code, salt)
+        Ok(Address::ZERO)
+    }
+}"
+57,A stylus-quickstart-vending-machine variant that sells two different types of items at different prices,Commerce - ['MultiItem'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MultiItemVending {
+        owner: Address,
+        token_address: Address,
+        prices: mapping(u8 => U256),
+        stock: mapping(u8 => u32)
+    }
+}
+
+#[public]
+impl MultiItemVending {
+    pub fn new(token: Address) -> Self {
+        let mut instance = Self::default();
+        instance.owner = msg::sender();
+        instance.token_address = token;
+        instance
+    }
+
+    pub fn set_item_price(&mut self, item_id: u8, price: U256, qty: u32) {
+        if msg::sender() == self.owner {
+            self.prices.setter(item_id).set(price);
+            self.stock.setter(item_id).set(qty);
+        }
+    }
+
+    pub fn buy(&mut self, item_id: u8, quantity: u32) -> Result<(), String> {
+        let price = self.prices.get(item_id);
+        let available = self.stock.get(item_id);
+        if available < quantity {
+            return Err(""Not enough stock"".into());
+        }
+        let cost = price * U256::from(quantity);
+        // transferFrom buyer to contract
+        self.stock.setter(item_id).set(available - quantity);
+        Ok(())
+    }
+}"
+58,A stylus-english-auction variant that supports multiple NFT tokens at once,Auction - ['MultiNFT'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MultiNFTAuction {
+        owner: Address,
+        items: Vec<(Address, U256)>, // (nft_address, token_id)
+        bids: mapping(u32 => U256),
+        highest_bidder: mapping(u32 => Address),
+        ended: bool
+    }
+}
+
+#[public]
+impl MultiNFTAuction {
+    pub fn add_item(&mut self, nft: Address, token_id: U256) {
+        if msg::sender() != self.owner {
+            return;
+        }
+        self.items.push((nft, token_id));
+    }
+
+    pub fn place_bid(&mut self, index: u32, amount: U256) -> Result<(), String> {
+        if index as usize >= self.items.len() {
+            return Err(""Invalid index"".into());
+        }
+        if self.ended {
+            return Err(""Auction ended"".into());
+        }
+        let current_bid = self.bids.get(index);
+        if amount <= current_bid {
+            return Err(""Bid not high enough"".into());
+        }
+        self.bids.setter(index).set(amount);
+        self.highest_bidder.setter(index).set(msg::sender());
+        Ok(())
+    }
+
+    pub fn end_all(&mut self) {
+        if msg::sender() != self.owner {
+            return;
+        }
+        self.ended = true;
+    }
+}"
+59,A stylus-workshop-counter variation that uses a step parameter to increment or decrement by a specified amount,Counter - ['VariableStep'],"use stylus_sdk::prelude::*;
+
+sol_storage! {
+    #[entrypoint]
+    pub struct StepCounter {
+        value: i64
+    }
+}
+
+#[public]
+impl StepCounter {
+    pub fn increment(&mut self, step: i64) {
+        self.value += step;
+    }
+
+    pub fn decrement(&mut self, step: i64) {
+        self.value -= step;
+    }
+
+    pub fn get_value(&self) -> i64 {
+        self.value
+    }
+}"
