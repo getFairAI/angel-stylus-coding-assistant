@@ -1,0 +1,451 @@
+[
+    {
+      "instruction": "A governance token contract with a snapshot feature for on-chain voting",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct GovTokenParams;\nimpl Erc20Params for GovTokenParams {\n    const NAME: &'static str = \"GovernanceToken\";\n    const SYMBOL: &'static str = \"GVT\";\n    const DECIMALS: u8 = 18;\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct GovernanceToken {\n        #[borrow]\n        Erc20<GovTokenParams> erc20;\n        snapshots: mapping(u64 => mapping(Address => U256)),\n        current_snapshot_id: u64\n    }\n}\n\n#[public]\n#[inherit(Erc20<GovTokenParams>)]\nimpl GovernanceToken {\n    pub fn snapshot(&mut self) -> u64 {\n        self.current_snapshot_id += 1;\n        let snap_id = self.current_snapshot_id;\n        // In a real implementation, you'd iterate over holders and record balances.\n        snap_id\n    }\n\n    pub fn balance_of_at(&self, account: Address, snapshot_id: u64) -> U256 {\n        self.snapshots.get(snapshot_id).get(account)\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["Governance", "Snapshot"]
+      }
+    },
+    {
+      "instruction": "A simple DAO contract that allows token holders to create and vote on proposals",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Proposal {\n    pub description: String,\n    pub votes_for: U256,\n    pub votes_against: U256,\n    pub executed: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct SimpleDAO {\n        proposals: Vec<Proposal>,\n        governance_token: Address,\n        quorum_threshold: U256\n    }\n}\n\n#[public]\nimpl SimpleDAO {\n    pub fn new(token_addr: Address, quorum: U256) -> Self {\n        let mut instance = Self::default();\n        instance.governance_token = token_addr;\n        instance.quorum_threshold = quorum;\n        instance\n    }\n\n    pub fn create_proposal(&mut self, description: String) {\n        let proposal = Proposal {\n            description,\n            votes_for: U256::zero(),\n            votes_against: U256::zero(),\n            executed: false\n        };\n        self.proposals.push(proposal);\n    }\n\n    pub fn vote(&mut self, proposal_id: usize, support: bool, weight: U256) -> Result<(), String> {\n        if proposal_id >= self.proposals.len() {\n            return Err(\"Invalid proposal\".into());\n        }\n        if support {\n            self.proposals[proposal_id].votes_for += weight;\n        } else {\n            self.proposals[proposal_id].votes_against += weight;\n        }\n        Ok(())\n    }\n\n    pub fn execute_proposal(&mut self, proposal_id: usize) -> Result<(), String> {\n        if proposal_id >= self.proposals.len() {\n            return Err(\"Invalid proposal\".into());\n        }\n        let proposal = &mut self.proposals[proposal_id];\n        if proposal.executed {\n            return Err(\"Already executed\".into());\n        }\n        let total_votes = proposal.votes_for + proposal.votes_against;\n        if total_votes < self.quorum_threshold {\n            return Err(\"Not enough votes\".into());\n        }\n        proposal.executed = true;\n        Ok(())\n    }\n}",
+      "category": "Governance",
+      "metadata": {
+        "features": ["DAO", "Proposals"]
+      }
+    },
+    {
+      "instruction": "An escrow contract that holds funds until both parties sign off on release",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct Escrow {\n        depositor: Address,\n        beneficiary: Address,\n        arbiter: Address,\n        funds_released: bool,\n        balance: U256\n    }\n}\n\n#[public]\nimpl Escrow {\n    pub fn initialize(&mut self, beneficiary: Address, arbiter: Address) -> Result<(), String> {\n        if self.depositor != Address::ZERO {\n            return Err(\"Already initialized\".into());\n        }\n        self.depositor = msg::sender();\n        self.beneficiary = beneficiary;\n        self.arbiter = arbiter;\n        Ok(())\n    }\n\n    pub fn deposit(&mut self) -> Result<(), String> {\n        if msg::sender() != self.depositor {\n            return Err(\"Only depositor can deposit\".into());\n        }\n        let value = msg::value();\n        self.balance += value;\n        Ok(())\n    }\n\n    pub fn release(&mut self) -> Result<(), String> {\n        if msg::sender() != self.arbiter {\n            return Err(\"Only arbiter can release funds\".into());\n        }\n        if self.funds_released {\n            return Err(\"Funds already released\".into());\n        }\n        self.funds_released = true;\n        // transfer self.balance to self.beneficiary\n        Ok(())\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["Escrow"]
+      }
+    },
+    {
+      "instruction": "A contract that implements a simple subscription model where users pay monthly with ERC20 tokens",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct SubscriptionService {\n        owner: Address,\n        token_address: Address,\n        monthly_fee: U256,\n        next_due_date: mapping(Address => u64)\n    }\n}\n\n#[public]\nimpl SubscriptionService {\n    pub fn new(token_addr: Address, fee: U256) -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance.token_address = token_addr;\n        instance.monthly_fee = fee;\n        instance\n    }\n\n    pub fn subscribe(&mut self) -> Result<(), String> {\n        let due = self.next_due_date.get(msg::sender());\n        if due > block_timestamp() {\n            return Err(\"Subscription still active\".into());\n        }\n        // Transfer tokens from user to contract\n        let new_due = block_timestamp() + 30 * 24 * 60 * 60;\n        self.next_due_date.setter(msg::sender()).set(new_due);\n        Ok(())\n    }\n\n    pub fn is_active(&self, user: Address) -> bool {\n        let due = self.next_due_date.get(user);\n        block_timestamp() < due\n    }\n}",
+      "category": "Commerce",
+      "metadata": {
+        "features": ["Subscription", "ERC20Integration"]
+      }
+    },
+    {
+      "instruction": "A loyalty points contract where users can earn points for activities and redeem them for items",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct LoyaltyParams;\nimpl Erc20Params for LoyaltyParams {\n    const NAME: &'static str = \"LoyaltyPoints\";\n    const SYMBOL: &'static str = \"LPT\";\n    const DECIMALS: u8 = 0;\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct Loyalty {\n        #[borrow]\n        Erc20<LoyaltyParams> erc20;\n        owner: Address\n    }\n}\n\n#[public]\n#[inherit(Erc20<LoyaltyParams>)]\nimpl Loyalty {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn award_points(&mut self, user: Address, amount: U256) -> Result<(), Erc20Error> {\n        if msg::sender() != self.owner {\n            return Err(Erc20Error::Custom(\"Only owner can award points\".into()));\n        }\n        self.erc20.mint(user, amount)\n    }\n\n    pub fn redeem_points(&mut self, amount: U256) -> Result<(), String> {\n        // user redeems points, presumably for items\n        self.erc20.burn(msg::sender(), amount).map_err(|e| format!(\"{:?}\", e))?;\n        Ok(())\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["Loyalty", "Burnable"]
+      }
+    },
+    {
+      "instruction": "A derivative contract that tracks an asset price feed and allows users to long or short positions",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct SimpleDerivative {\n        owner: Address,\n        price_feed: Address,\n        positions: mapping(Address => i64) // positive for long, negative for short\n    }\n}\n\n#[public]\nimpl SimpleDerivative {\n    pub fn new(feed: Address) -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance.price_feed = feed;\n        instance\n    }\n\n    pub fn open_position(&mut self, is_long: bool, size: i64) {\n        let current = self.positions.get(msg::sender());\n        self.positions.setter(msg::sender()).set(current + if is_long { size } else { -size });\n    }\n\n    pub fn close_position(&mut self) {\n        self.positions.setter(msg::sender()).set(0);\n    }\n}",
+      "category": "DeFi",
+      "metadata": {
+        "features": ["Positions", "PriceFeed"]
+      }
+    },
+    {
+      "instruction": "A contract that locks ERC20 tokens for a vesting schedule, releasing them gradually over time",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct VestingTokenParams;\nimpl Erc20Params for VestingTokenParams {\n    const NAME: &'static str = \"VestingToken\";\n    const SYMBOL: &'static str = \"VST\";\n    const DECIMALS: u8 = 18;\n}\n\n#[derive(Default)]\npub struct VestingSchedule {\n    pub total: U256,\n    pub released: U256,\n    pub start_time: u64,\n    pub cliff: u64,\n    pub duration: u64\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct VestingContract {\n        #[borrow]\n        Erc20<VestingTokenParams> erc20;\n        schedules: mapping(Address => VestingSchedule),\n        owner: Address\n    }\n}\n\n#[public]\n#[inherit(Erc20<VestingTokenParams>)]\nimpl VestingContract {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn add_schedule(&mut self, beneficiary: Address, total: U256, start: u64, cliff: u64, duration: u64) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner\".into());\n        }\n        let sched = VestingSchedule {\n            total,\n            released: U256::zero(),\n            start_time: start,\n            cliff,\n            duration\n        };\n        self.schedules.setter(beneficiary).set(sched);\n        Ok(())\n    }\n\n    pub fn release_tokens(&mut self) -> Result<(), String> {\n        let mut sched = self.schedules.get(msg::sender());\n        if sched.total == U256::zero() {\n            return Err(\"No vesting schedule\".into());\n        }\n        let now = block_timestamp();\n        if now < sched.cliff {\n            return Err(\"Cliff not reached\".into());\n        }\n        let elapsed = if now > sched.duration { sched.duration } else { now } - sched.start_time;\n        let releasable = (U256::from(elapsed) * sched.total) / U256::from(sched.duration) - sched.released;\n        if releasable > U256::zero() {\n            sched.released += releasable;\n            self.schedules.setter(msg::sender()).set(sched);\n            self.erc20.mint(msg::sender(), releasable)?;\n        }\n        Ok(())\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["Vesting", "Mintable"]
+      }
+    },
+    {
+      "instruction": "A contract for a decentralized insurance pool where members can contribute and claim under certain conditions",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Claim {\n    pub claimant: Address,\n    pub amount: U256,\n    pub approved: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct InsurancePool {\n        owner: Address,\n        pool_balance: U256,\n        claims: Vec<Claim>\n    }\n}\n\n#[public]\nimpl InsurancePool {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn contribute(&mut self) {\n        let value = msg::value();\n        self.pool_balance += value;\n    }\n\n    pub fn file_claim(&mut self, amount: U256) {\n        let claim = Claim {\n            claimant: msg::sender(),\n            amount,\n            approved: false\n        };\n        self.claims.push(claim);\n    }\n\n    pub fn approve_claim(&mut self, index: usize) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner can approve\".into());\n        }\n        if index >= self.claims.len() {\n            return Err(\"Invalid index\".into());\n        }\n        self.claims[index].approved = true;\n        Ok(())\n    }\n\n    pub fn payout_claim(&mut self, index: usize) -> Result<(), String> {\n        if index >= self.claims.len() {\n            return Err(\"Invalid claim index\".into());\n        }\n        let claim = &mut self.claims[index];\n        if !claim.approved {\n            return Err(\"Claim not approved\".into());\n        }\n        if self.pool_balance < claim.amount {\n            return Err(\"Insufficient pool balance\".into());\n        }\n        self.pool_balance -= claim.amount;\n        // send claim.amount to claim.claimant\n        claim.approved = false; // mark as paid out\n        Ok(())\n    }\n}",
+      "category": "Insurance",
+      "metadata": {
+        "features": ["Pool", "Claims"]
+      }
+    },
+    {
+      "instruction": "A multi-tier membership NFT where each tier has different metadata URIs",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct TieredNFTParams;\nimpl Erc721Params for TieredNFTParams {\n    const NAME: &'static str = \"TieredNFT\";\n    const SYMBOL: &'static str = \"TNFT\";\n    fn token_uri(_id: U256) -> String {\n        \"\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct TieredNFT {\n        #[borrow]\n        Erc721<TieredNFTParams> erc721;\n        tier_uris: mapping(u8 => String),\n        token_tier: mapping(U256 => u8)\n    }\n}\n\n#[public]\n#[inherit(Erc721<TieredNFTParams>)]\nimpl TieredNFT {\n    pub fn set_tier_uri(&mut self, tier: u8, uri: String) {\n        self.tier_uris.setter(tier).set(uri);\n    }\n\n    pub fn mint_with_tier(&mut self, to: Address, tier: u8) -> Result<U256, Erc721Error> {\n        let token_id = self.erc721.total_supply().unwrap_or(U256::zero()) + U256::one();\n        self.erc721.mint_with_id(to, token_id)?;\n        self.token_tier.setter(token_id).set(tier);\n        Ok(token_id)\n    }\n\n    pub fn token_uri_custom(&self, token_id: U256) -> Option<String> {\n        let tier = self.token_tier.get(token_id);\n        self.tier_uris.get(tier)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["MembershipTiers"]
+      }
+    },
+    {
+      "instruction": "A random distribution contract that splits received funds among multiple beneficiaries with pseudo-random ratios",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct RandomSplitter {\n        beneficiaries: Vec<Address>,\n        owner: Address\n    }\n}\n\n#[public]\nimpl RandomSplitter {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn add_beneficiary(&mut self, addr: Address) {\n        if msg::sender() == self.owner {\n            self.beneficiaries.push(addr);\n        }\n    }\n\n    pub fn distribute(&mut self) -> Result<(), String> {\n        let total = msg::balance_of_self();\n        if self.beneficiaries.is_empty() {\n            return Err(\"No beneficiaries\".into());\n        }\n        for addr in &self.beneficiaries {\n            let random_hash = block_hash(block_number() + (addr.0[0] as u64));\n            let share = (random_hash % U256::from(self.beneficiaries.len())) + U256::one();\n            let portion = total / share;\n            // In real usage, track sum, ensure no double-spend, etc.\n            // transfer portion to *addr\n        }\n        Ok(())\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["RandomSplit", "PseudoRandom"]
+      }
+    },
+    {
+      "instruction": "A contract that stores multi-lingual greeting messages for different locales",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct MultiLingualGreet {\n        greetings: mapping(String => String)\n    }\n}\n\n#[public]\nimpl MultiLingualGreet {\n    pub fn set_greeting(&mut self, locale: String, message: String) {\n        self.greetings.setter(locale).set(message);\n    }\n\n    pub fn get_greeting(&self, locale: String) -> Option<String> {\n        self.greetings.get(locale)\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["Localization"]
+      }
+    },
+    {
+      "instruction": "A contract that allows setting an external data feed as an oracle for validating user-submitted data",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct OracleChecker {\n        oracle: Address,\n        threshold: U256\n    }\n}\n\n#[public]\nimpl OracleChecker {\n    pub fn new(oracle_addr: Address, threshold: U256) -> Self {\n        let mut instance = Self::default();\n        instance.oracle = oracle_addr;\n        instance.threshold = threshold;\n        instance\n    }\n\n    pub fn check_data(&self, data_value: U256) -> bool {\n        // In a real contract, call the oracle to verify data_value.\n        data_value <= self.threshold\n    }\n}",
+      "category": "Oracle",
+      "metadata": {
+        "features": ["DataFeed"]
+      }
+    },
+    {
+      "instruction": "A contract that rewards users in an ERC20 token for maintaining high on-chain reputation",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct ReputationRewardParams;\nimpl Erc20Params for ReputationRewardParams {\n    const NAME: &'static str = \"RepRewardToken\";\n    const SYMBOL: &'static str = \"RRT\";\n    const DECIMALS: u8 = 18;\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct ReputationReward {\n        #[borrow]\n        Erc20<ReputationRewardParams> erc20;\n        reputation_scores: mapping(Address => u32),\n        owner: Address\n    }\n}\n\n#[public]\n#[inherit(Erc20<ReputationRewardParams>)]\nimpl ReputationReward {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn set_reputation(&mut self, user: Address, score: u32) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner\".into());\n        }\n        self.reputation_scores.setter(user).set(score);\n        Ok(())\n    }\n\n    pub fn claim_reward(&mut self) -> Result<(), String> {\n        let score = self.reputation_scores.get(msg::sender());\n        if score > 100 {\n            let reward_amount = U256::from(score) * U256::from(10);\n            self.erc20.mint(msg::sender(), reward_amount).map_err(|e| format!(\"{:?}\", e))?;\n        } else {\n            return Err(\"Reputation too low\".into());\n        }\n        Ok(())\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["Reputation", "Reward"]
+      }
+    },
+    {
+      "instruction": "A simple bridging contract that locks tokens on L2 while referencing a separate L1 contract for unlocking",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct BridgeL2 {\n        l1_bridge: Address,\n        locked_balances: mapping(Address => U256)\n    }\n}\n\n#[public]\nimpl BridgeL2 {\n    pub fn initialize(&mut self, l1_contract: Address) -> Result<(), String> {\n        if self.l1_bridge != Address::ZERO {\n            return Err(\"Already initialized\".into());\n        }\n        self.l1_bridge = l1_contract;\n        Ok(())\n    }\n\n    pub fn lock(&mut self, amount: U256) {\n        let current = self.locked_balances.get(msg::sender());\n        self.locked_balances.setter(msg::sender()).set(current + amount);\n        // In real usage, transfer tokens from user to contract\n    }\n\n    pub fn unlock(&mut self, user: Address, amount: U256) -> Result<(), String> {\n        if msg::sender() != self.l1_bridge {\n            return Err(\"Only L1 bridge can unlock\".into());\n        }\n        let current = self.locked_balances.get(user);\n        if current < amount {\n            return Err(\"Insufficient locked balance\".into());\n        }\n        self.locked_balances.setter(user).set(current - amount);\n        // tokens return to user\n        Ok(())\n    }\n}",
+      "category": "Bridge",
+      "metadata": {
+        "features": ["L2Locking", "CrossChain"]
+      }
+    },
+    {
+      "instruction": "A contract that automatically invests received ETH into a DeFi protocol (stubbed) to earn yield",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct AutoInvestor {\n        owner: Address,\n        total_invested: U256\n    }\n}\n\n#[public]\nimpl AutoInvestor {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn deposit_and_invest(&mut self) {\n        let value = msg::value();\n        // Stubbed: deposit 'value' into some DeFi protocol\n        self.total_invested += value;\n    }\n\n    pub fn withdraw_investment(&mut self, amount: U256) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner can withdraw\".into());\n        }\n        if amount > self.total_invested {\n            return Err(\"Insufficient balance\".into());\n        }\n        self.total_invested -= amount;\n        // Stubbed: withdraw from DeFi protocol and send to owner\n        Ok(())\n    }\n}",
+      "category": "DeFi",
+      "metadata": {
+        "features": ["AutoInvest"]
+      }
+    },
+    {
+      "instruction": "A contract that manages a decentralized marketplace for digital items, tracking item listings and purchases",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Listing {\n    pub seller: Address,\n    pub price: U256,\n    pub active: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct DigitalMarketplace {\n        listings: mapping(u64 => Listing),\n        listing_count: u64\n    }\n}\n\n#[public]\nimpl DigitalMarketplace {\n    pub fn create_listing(&mut self, price: U256) -> u64 {\n        let listing_id = self.listing_count;\n        self.listing_count += 1;\n        let listing = Listing {\n            seller: msg::sender(),\n            price,\n            active: true\n        };\n        self.listings.setter(listing_id).set(listing);\n        listing_id\n    }\n\n    pub fn purchase(&mut self, listing_id: u64) -> Result<(), String> {\n        let mut listing = self.listings.get(listing_id);\n        if !listing.active {\n            return Err(\"Listing inactive\".into());\n        }\n        let value = msg::value();\n        if value < listing.price {\n            return Err(\"Insufficient payment\".into());\n        }\n        // Transfer ownership logic would be here for the digital item\n        listing.active = false;\n        self.listings.setter(listing_id).set(listing);\n        // forward payment to seller\n        Ok(())\n    }\n}",
+      "category": "Commerce",
+      "metadata": {
+        "features": ["Marketplace"]
+      }
+    },
+    {
+      "instruction": "A contract that handles recurring payroll for employees in ERC20 tokens, paid by an employer",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct PayrollTokenParams;\nimpl Erc20Params for PayrollTokenParams {\n    const NAME: &'static str = \"PayrollToken\";\n    const SYMBOL: &'static str = \"PRT\";\n    const DECIMALS: u8 = 18;\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct Payroll {\n        #[borrow]\n        Erc20<PayrollTokenParams> erc20;\n        employer: Address,\n        salaries: mapping(Address => U256)\n    }\n}\n\n#[public]\n#[inherit(Erc20<PayrollTokenParams>)]\nimpl Payroll {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.employer = msg::sender();\n        instance\n    }\n\n    pub fn set_salary(&mut self, employee: Address, salary: U256) -> Result<(), String> {\n        if msg::sender() != self.employer {\n            return Err(\"Only employer can set salary\".into());\n        }\n        self.salaries.setter(employee).set(salary);\n        Ok(())\n    }\n\n    pub fn pay(&mut self, employee: Address) -> Result<(), String> {\n        if msg::sender() != self.employer {\n            return Err(\"Only employer can pay\".into());\n        }\n        let salary = self.salaries.get(employee);\n        if salary > U256::zero() {\n            self.erc20.mint(employee, salary)?;\n        } else {\n            return Err(\"No salary set\".into());\n        }\n        Ok(())\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["Payroll", "Mintable"]
+      }
+    },
+    {
+      "instruction": "A multi-sig NFT contract that requires two owners' signatures to mint a new NFT",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct MultiSigNFTParams;\nimpl Erc721Params for MultiSigNFTParams {\n    const NAME: &'static str = \"MultiSigNFT\";\n    const SYMBOL: &'static str = \"MSN\";\n    fn token_uri(_id: U256) -> String {\n        \"https://multisig.example/\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct MultiSigNFT {\n        #[borrow]\n        Erc721<MultiSigNFTParams> erc721;\n        owners: [Address; 2],\n        approvals: mapping(U256 => u8) // track how many owners approved a token ID\n    }\n}\n\n#[public]\n#[inherit(Erc721<MultiSigNFTParams>)]\nimpl MultiSigNFT {\n    pub fn new(o1: Address, o2: Address) -> Self {\n        let mut instance = Self::default();\n        instance.owners = [o1, o2];\n        instance\n    }\n\n    pub fn approve_mint(&mut self, token_id: U256) -> Result<(), String> {\n        let sender = msg::sender();\n        if sender != self.owners[0] && sender != self.owners[1] {\n            return Err(\"Not an owner\".into());\n        }\n        let current = self.approvals.get(token_id);\n        self.approvals.setter(token_id).set(current + 1);\n        Ok(())\n    }\n\n    pub fn mint_if_approved(&mut self, to: Address, token_id: U256) -> Result<(), Erc721Error> {\n        let approvals = self.approvals.get(token_id);\n        if approvals < 2 {\n            return Err(Erc721Error::Custom(\"Not enough approvals\".into()));\n        }\n        self.erc721.mint_with_id(to, token_id)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["MultiSigMint"]
+      }
+    },
+    {
+      "instruction": "A subscription-based library contract that offers discount rates based on a staked token amount",
+      "code": "use stylus_sdk::prelude::*;\n\n#[library]\npub mod SubscriptionLib {\n    use super::*;\n\n    pub fn discount_rate(staked: U256) -> u8 {\n        if staked >= U256::from(1000) {\n            20 // 20% discount\n        } else if staked >= U256::from(500) {\n            10\n        } else {\n            0\n        }\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["LibraryContract", "DiscountLogic"]
+      }
+    },
+    {
+      "instruction": "An ERC20 contract that time-locks a portion of tokens after each transfer for anti-dumping measures",
+      "code": "pub struct AntiDumpTokenParams;\n\nimpl Erc20Params for AntiDumpTokenParams {\n    const NAME: &'static str = \"AntiDumpToken\";\n    const SYMBOL: &'static str = \"ADT\";\n    const DECIMALS: u8 = 18;\n}\n\nuse stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct AntiDumpToken {\n        #[borrow]\n        Erc20<AntiDumpTokenParams> erc20;\n        locked_balances: mapping(Address => U256),\n        unlock_times: mapping(Address => u64)\n    }\n}\n\n#[public]\n#[inherit(Erc20<AntiDumpTokenParams>)]\nimpl AntiDumpToken {\n    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {\n        // lock 5% of the transferred amount\n        let lock_amount = (amount * U256::from(5)) / U256::from(100);\n        let send_amount = amount - lock_amount;\n\n        // update lock for 'to'\n        let current_locked = self.locked_balances.get(to);\n        self.locked_balances.setter(to).set(current_locked + lock_amount);\n        let current_time = block_timestamp();\n        self.unlock_times.setter(to).set(current_time + 86400 * 7); // lock for 7 days\n\n        self.erc20._transfer(msg::sender(), to, send_amount)\n    }\n\n    pub fn unlock(&mut self) -> Result<(), Erc20Error> {\n        let now = block_timestamp();\n        let unlock_time = self.unlock_times.get(msg::sender());\n        if now < unlock_time {\n            return Err(Erc20Error::Custom(\"Still locked\".into()));\n        }\n        let locked = self.locked_balances.get(msg::sender());\n        if locked > U256::zero() {\n            self.locked_balances.setter(msg::sender()).set(U256::zero());\n            // effectively add locked tokens to user's balance by minting\n            self.erc20.mint(msg::sender(), locked)?;\n        }\n        Ok(())\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["AntiDump", "TimeLock"]
+      }
+    },
+    {
+      "instruction": "A contract that tokenizes real-world assets by bridging an external data feed verifying ownership documents",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct RealAssetTokenParams;\nimpl Erc721Params for RealAssetTokenParams {\n    const NAME: &'static str = \"RealAssetToken\";\n    const SYMBOL: &'static str = \"RAT\";\n    fn token_uri(_id: U256) -> String {\n        \"https://realassets.example/metadata\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct RealAssetNFT {\n        #[borrow]\n        Erc721<RealAssetTokenParams> erc721;\n        ownership_feed: Address\n    }\n}\n\n#[public]\n#[inherit(Erc721<RealAssetTokenParams>)]\nimpl RealAssetNFT {\n    pub fn new(feed: Address) -> Self {\n        let mut instance = Self::default();\n        instance.ownership_feed = feed;\n        instance\n    }\n\n    pub fn mint_asset(&mut self, to: Address) -> Result<(), Erc721Error> {\n        // call external feed to verify real-world ownership docs\n        self.erc721.mint(to)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["RealWorldAsset", "OracleVerification"]
+      }
+    },
+    {
+      "instruction": "A contract that implements a simple rock-paper-scissors game with wagering in ETH",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Debug, Clone)]\npub enum Move {\n    Rock,\n    Paper,\n    Scissors,\n    None\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct RockPaperScissors {\n        player1: Address,\n        player2: Address,\n        wager: U256,\n        move1: Move,\n        move2: Move,\n        game_finished: bool\n    }\n}\n\n#[public]\nimpl RockPaperScissors {\n    pub fn create_game(&mut self, opponent: Address) -> Result<(), String> {\n        if self.player1 != Address::ZERO {\n            return Err(\"Game already in progress\".into());\n        }\n        self.player1 = msg::sender();\n        self.player2 = opponent;\n        self.move1 = Move::None;\n        self.move2 = Move::None;\n        self.wager = msg::value();\n        Ok(())\n    }\n\n    pub fn join_game(&mut self) -> Result<(), String> {\n        if msg::sender() != self.player2 {\n            return Err(\"Not the correct opponent\".into());\n        }\n        if msg::value() < self.wager {\n            return Err(\"Must match wager\".into());\n        }\n        Ok(())\n    }\n\n    pub fn make_move(&mut self, mv: u8) -> Result<(), String> {\n        if self.game_finished {\n            return Err(\"Game over\".into());\n        }\n        let sender = msg::sender();\n        let parsed_move = match mv {\n            0 => Move::Rock,\n            1 => Move::Paper,\n            2 => Move::Scissors,\n            _ => return Err(\"Invalid move\".into())\n        };\n        if sender == self.player1 {\n            self.move1 = parsed_move;\n        } else if sender == self.player2 {\n            self.move2 = parsed_move;\n        } else {\n            return Err(\"Not a participant\".into());\n        }\n        Ok(())\n    }\n\n    pub fn reveal_winner(&mut self) {\n        // simple logic: compare move1 vs move2\n        self.game_finished = true;\n        // transfer pot to winner\n    }\n}",
+      "category": "Game",
+      "metadata": {
+        "features": ["RockPaperScissors", "Wager"]
+      }
+    },
+    {
+      "instruction": "A contract that implements a fair raffle by hashing user commitments and revealing them later",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Commitment {\n    commitment_hash: [u8; 32],\n    revealed: bool,\n    number: u64\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct FairRaffle {\n        commitments: mapping(Address => Commitment),\n        ended: bool\n    }\n}\n\n#[public]\nimpl FairRaffle {\n    pub fn commit_number(&mut self, hash: [u8; 32]) -> Result<(), String> {\n        if self.ended {\n            return Err(\"Raffle ended\".into());\n        }\n        let c = Commitment {\n            commitment_hash: hash,\n            revealed: false,\n            number: 0\n        };\n        self.commitments.setter(msg::sender()).set(c);\n        Ok(())\n    }\n\n    pub fn reveal_number(&mut self, number: u64, salt: u64) -> Result<(), String> {\n        let mut c = self.commitments.get(msg::sender());\n        if c.commitment_hash == [0u8; 32] {\n            return Err(\"No commitment\".into());\n        }\n        let hash_check = stylus_sdk::hash::keccak256(\n            [number.to_le_bytes().as_ref(), salt.to_le_bytes().as_ref()].concat()\n        );\n        if hash_check != c.commitment_hash {\n            return Err(\"Invalid reveal\".into());\n        }\n        c.revealed = true;\n        c.number = number;\n        self.commitments.setter(msg::sender()).set(c);\n        Ok(())\n    }\n\n    pub fn end_raffle(&mut self) {\n        self.ended = true;\n        // pick a winner among valid reveals\n    }\n}",
+      "category": "Game",
+      "metadata": {
+        "features": ["CommitReveal"]
+      }
+    },
+    {
+      "instruction": "A contract implementing a direct buy/sell order book for ERC20 tokens",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Order {\n    pub maker: Address,\n    pub amount: U256,\n    pub price: U256,\n    pub is_buy: bool,\n    pub filled: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct OrderBook {\n        token_address: Address,\n        orders: Vec<Order>\n    }\n}\n\n#[public]\nimpl OrderBook {\n    pub fn new(token_addr: Address) -> Self {\n        let mut instance = Self::default();\n        instance.token_address = token_addr;\n        instance\n    }\n\n    pub fn create_order(&mut self, amount: U256, price: U256, is_buy: bool) {\n        let o = Order {\n            maker: msg::sender(),\n            amount,\n            price,\n            is_buy,\n            filled: false\n        };\n        self.orders.push(o);\n    }\n\n    pub fn match_order(&mut self, idx: usize) -> Result<(), String> {\n        if idx >= self.orders.len() {\n            return Err(\"Invalid order index\".into());\n        }\n        let mut order = &mut self.orders[idx];\n        if order.filled {\n            return Err(\"Order already filled\".into());\n        }\n        // In a real system: transfer tokens/funds and mark as filled\n        order.filled = true;\n        Ok(())\n    }\n}",
+      "category": "DeFi",
+      "metadata": {
+        "features": ["OrderBook"]
+      }
+    },
+    {
+      "instruction": "A multi-chain NFT bridge that allows NFT locking on one chain and minting a synthetic on another",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct BridgeNFTParams;\nimpl Erc721Params for BridgeNFTParams {\n    const NAME: &'static str = \"BridgedNFT\";\n    const SYMBOL: &'static str = \"BNF\";\n    fn token_uri(_id: U256) -> String {\n        \"https://bridge-nft.example/\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct NFTBridge {\n        #[borrow]\n        Erc721<BridgeNFTParams> erc721;\n        origin_chain: bool\n    }\n}\n\n#[public]\n#[inherit(Erc721<BridgeNFTParams>)]\nimpl NFTBridge {\n    pub fn new(is_origin: bool) -> Self {\n        let mut instance = Self::default();\n        instance.origin_chain = is_origin;\n        instance\n    }\n\n    pub fn lock_nft(&mut self, token_id: U256) -> Result<(), Erc721Error> {\n        if !self.origin_chain {\n            return Err(Erc721Error::Custom(\"Cannot lock on secondary chain\".into()));\n        }\n        let owner = self.erc721.owner_of(token_id)?;\n        if owner != msg::sender() {\n            return Err(Erc721Error::Custom(\"Not owner\".into()));\n        }\n        self.erc721.transfer_from(owner, address_of_self(), token_id)\n    }\n\n    pub fn mint_synthetic(&mut self, to: Address, token_id: U256) -> Result<(), Erc721Error> {\n        if self.origin_chain {\n            return Err(Erc721Error::Custom(\"Cannot mint synthetic on origin\".into()));\n        }\n        self.erc721.mint_with_id(to, token_id)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["CrossChain", "NFTBridge"]
+      }
+    },
+    {
+      "instruction": "A contract that enforces daily spending limits for each address in an ERC20 environment",
+      "code": "pub struct DailyLimitParams;\n\nimpl Erc20Params for DailyLimitParams {\n    const NAME: &'static str = \"DailyLimitToken\";\n    const SYMBOL: &'static str = \"DLT\";\n    const DECIMALS: u8 = 18;\n}\n\nuse stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct DailyLimitERC20 {\n        #[borrow]\n        Erc20<DailyLimitParams> erc20;\n        limits: mapping(Address => U256),\n        spent_today: mapping(Address => U256),\n        last_spent_day: mapping(Address => u64),\n        default_limit: U256\n    }\n}\n\n#[public]\n#[inherit(Erc20<DailyLimitParams>)]\nimpl DailyLimitERC20 {\n    pub fn new(limit: U256) -> Self {\n        let mut instance = Self::default();\n        instance.default_limit = limit;\n        instance\n    }\n\n    pub fn set_limit(&mut self, user: Address, limit: U256) {\n        if msg::sender() == address_of_self() {\n            self.limits.setter(user).set(limit);\n        }\n    }\n\n    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Erc20Error> {\n        let day = block_number() / 6500; // rough approximation of days\n        let user = msg::sender();\n        let last_day = self.last_spent_day.get(user);\n        let mut spent = self.spent_today.get(user);\n        if day != last_day {\n            spent = U256::zero();\n            self.spent_today.setter(user).set(spent);\n            self.last_spent_day.setter(user).set(day);\n        }\n        let limit = self.limits.get(user);\n        let user_limit = if limit == U256::zero() {\n            self.default_limit\n        } else {\n            limit\n        };\n        if spent + amount > user_limit {\n            return Err(Erc20Error::Custom(\"Daily limit exceeded\".into()));\n        }\n        self.spent_today.setter(user).set(spent + amount);\n        self.erc20.transfer(to, amount)\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["DailySpendingLimit"]
+      }
+    },
+    {
+      "instruction": "A multi-fund wallet that tracks different projects, each with its own sub-balance",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct MultiFundWallet {\n        owner: Address,\n        project_balances: mapping(String => U256)\n    }\n}\n\n#[public]\nimpl MultiFundWallet {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn fund_project(&mut self, project_name: String) {\n        let value = msg::value();\n        let current = self.project_balances.get(project_name.clone());\n        self.project_balances.setter(project_name).set(current + value);\n    }\n\n    pub fn withdraw_project_funds(&mut self, project_name: String, amount: U256) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner\".into());\n        }\n        let current = self.project_balances.get(project_name.clone());\n        if current < amount {\n            return Err(\"Insufficient funds\".into());\n        }\n        self.project_balances.setter(project_name).set(current - amount);\n        // transfer out to owner\n        Ok(())\n    }\n}",
+      "category": "Wallet",
+      "metadata": {
+        "features": ["MultiFund"]
+      }
+    },
+    {
+      "instruction": "A crowd-funding contract where each project has a funding goal and a deadline",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Campaign {\n    goal: U256,\n    deadline: u64,\n    raised: U256,\n    creator: Address,\n    claimed: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct CrowdFunding {\n        campaigns: mapping(u64 => Campaign),\n        campaign_count: u64\n    }\n}\n\n#[public]\nimpl CrowdFunding {\n    pub fn create_campaign(&mut self, goal: U256, deadline: u64) -> u64 {\n        let cid = self.campaign_count;\n        self.campaign_count += 1;\n        let camp = Campaign {\n            goal,\n            deadline,\n            raised: U256::zero(),\n            creator: msg::sender(),\n            claimed: false\n        };\n        self.campaigns.setter(cid).set(camp);\n        cid\n    }\n\n    pub fn contribute(&mut self, cid: u64) -> Result<(), String> {\n        let mut camp = self.campaigns.get(cid);\n        if block_timestamp() > camp.deadline {\n            return Err(\"Campaign ended\".into());\n        }\n        let amount = msg::value();\n        camp.raised += amount;\n        self.campaigns.setter(cid).set(camp);\n        Ok(())\n    }\n\n    pub fn claim_funds(&mut self, cid: u64) -> Result<(), String> {\n        let mut camp = self.campaigns.get(cid);\n        if camp.creator != msg::sender() {\n            return Err(\"Not campaign creator\".into());\n        }\n        if camp.claimed {\n            return Err(\"Already claimed\".into());\n        }\n        if camp.raised < camp.goal {\n            return Err(\"Goal not reached\".into());\n        }\n        camp.claimed = true;\n        self.campaigns.setter(cid).set(camp);\n        // transfer raised funds to camp.creator\n        Ok(())\n    }\n}",
+      "category": "Commerce",
+      "metadata": {
+        "features": ["CrowdFunding"]
+      }
+    },
+    {
+      "instruction": "A contract that acts as an aggregator for different NFT projects, showing a combined total of tokens for a user",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct NFTAggregator {\n        projects: Vec<Address>\n    }\n}\n\n#[public]\nimpl NFTAggregator {\n    pub fn add_project(&mut self, project: Address) {\n        self.projects.push(project);\n    }\n\n    pub fn total_balance(&self, user: Address) -> U256 {\n        let mut total = U256::zero();\n        // In real usage, call each project to get balance_of\n        for _p in &self.projects {\n            // total += Erc721<_>::balance_of(user)\n        }\n        total\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["Aggregator"]
+      }
+    },
+    {
+      "instruction": "A contract that implements an insurance-like coverage for validator slashing events",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Coverage {\n    validator: Address,\n    coverage_amount: U256,\n    active: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct ValidatorSlashingInsurance {\n        coverage_map: mapping(Address => Coverage),\n        insurer: Address,\n        pool_balance: U256\n    }\n}\n\n#[public]\nimpl ValidatorSlashingInsurance {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.insurer = msg::sender();\n        instance\n    }\n\n    pub fn buy_coverage(&mut self, coverage_amount: U256) {\n        let coverage = Coverage {\n            validator: msg::sender(),\n            coverage_amount,\n            active: true\n        };\n        self.coverage_map.setter(msg::sender()).set(coverage);\n        let payment = msg::value();\n        self.pool_balance += payment;\n    }\n\n    pub fn report_slash(&mut self, validator: Address) -> Result<(), String> {\n        if msg::sender() != self.insurer {\n            return Err(\"Only insurer can report slash\".into());\n        }\n        let mut coverage = self.coverage_map.get(validator);\n        if !coverage.active {\n            return Err(\"No active coverage\".into());\n        }\n        if self.pool_balance < coverage.coverage_amount {\n            return Err(\"Insufficient pool balance\".into());\n        }\n        self.pool_balance -= coverage.coverage_amount;\n        coverage.active = false;\n        self.coverage_map.setter(validator).set(coverage);\n        // pay coverage to validator\n        Ok(())\n    }\n}",
+      "category": "Insurance",
+      "metadata": {
+        "features": ["ValidatorCoverage"]
+      }
+    },
+    {
+      "instruction": "A contract that manages user badges as ERC721 tokens, with each badge type represented by a different token ID range",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct BadgeNFTParams;\nimpl Erc721Params for BadgeNFTParams {\n    const NAME: &'static str = \"BadgeNFT\";\n    const SYMBOL: &'static str = \"BDG\";\n    fn token_uri(_id: U256) -> String {\n        \"https://badge.example/\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct BadgeManager {\n        #[borrow]\n        Erc721<BadgeNFTParams> erc721;\n        owner: Address,\n        next_token_id: U256\n    }\n}\n\n#[public]\n#[inherit(Erc721<BadgeNFTParams>)]\nimpl BadgeManager {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance.next_token_id = U256::zero();\n        instance\n    }\n\n    pub fn award_badge(&mut self, recipient: Address) -> Result<(), Erc721Error> {\n        if msg::sender() != self.owner {\n            return Err(Erc721Error::Custom(\"Only owner\".into()));\n        }\n        let token_id = self.next_token_id;\n        self.next_token_id += U256::one();\n        self.erc721.mint_with_id(recipient, token_id)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["BadgeSystem"]
+      }
+    },
+    {
+      "instruction": "A contract that creates generic receipts for off-chain purchases, referencing an invoice ID",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Receipt {\n    invoice_id: String,\n    buyer: Address,\n    amount: U256\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct ReceiptBook {\n        receipts: Vec<Receipt>\n    }\n}\n\n#[public]\nimpl ReceiptBook {\n    pub fn record_purchase(&mut self, invoice_id: String, amount: U256) {\n        let r = Receipt {\n            invoice_id,\n            buyer: msg::sender(),\n            amount\n        };\n        self.receipts.push(r);\n    }\n\n    pub fn get_receipt_count(&self) -> usize {\n        self.receipts.len()\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["ReceiptStorage"]
+      }
+    },
+    {
+      "instruction": "An ERC721 that locks tokens under a multi-year escrow, transferrable only after a specific timestamp",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct LongLockNFTParams;\nimpl Erc721Params for LongLockNFTParams {\n    const NAME: &'static str = \"LongLockNFT\";\n    const SYMBOL: &'static str = \"LLN\";\n    fn token_uri(_id: U256) -> String {\n        \"https://longlock.example/\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct LongLockNFT {\n        #[borrow]\n        Erc721<LongLockNFTParams> erc721;\n        unlock_time: u64\n    }\n}\n\n#[public]\n#[inherit(Erc721<LongLockNFTParams>)]\nimpl LongLockNFT {\n    pub fn new(unlock_timestamp: u64) -> Self {\n        let mut instance = Self::default();\n        instance.unlock_time = unlock_timestamp;\n        instance\n    }\n\n    pub fn transfer_from(&mut self, from: Address, to: Address, token_id: U256) -> Result<(), Erc721Error> {\n        if block_timestamp() < self.unlock_time {\n            return Err(Erc721Error::Custom(\"NFTs are locked\".into()));\n        }\n        self.erc721.transfer_from(from, to, token_id)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["LongLock", "Timelock"]
+      }
+    },
+    {
+      "instruction": "A DAO treasury contract that can only spend funds after a proposal has been approved",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct TreasuryDAO {\n        owner: Address,\n        proposals: mapping(u64 => bool),\n        proposal_count: u64,\n        funds: U256\n    }\n}\n\n#[public]\nimpl TreasuryDAO {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn contribute(&mut self) {\n        let amount = msg::value();\n        self.funds += amount;\n    }\n\n    pub fn create_proposal(&mut self) -> u64 {\n        let pid = self.proposal_count;\n        self.proposal_count += 1;\n        self.proposals.setter(pid).set(false);\n        pid\n    }\n\n    pub fn approve_proposal(&mut self, pid: u64) {\n        if msg::sender() == self.owner {\n            self.proposals.setter(pid).set(true);\n        }\n    }\n\n    pub fn spend(&mut self, pid: u64, amount: U256) -> Result<(), String> {\n        if !self.proposals.get(pid) {\n            return Err(\"Proposal not approved\".into());\n        }\n        if self.funds < amount {\n            return Err(\"Insufficient funds\".into());\n        }\n        self.funds -= amount;\n        // transfer out\n        Ok(())\n    }\n}",
+      "category": "Governance",
+      "metadata": {
+        "features": ["Treasury", "Approval"]
+      }
+    },
+    {
+      "instruction": "A TimelockController contract that queues transactions and executes them after a delay",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct TimelockedTx {\n    eta: u64,\n    executed: bool,\n    data: Vec<u8>\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct TimelockController {\n        min_delay: u64,\n        transactions: mapping(u64 => TimelockedTx),\n        tx_count: u64\n    }\n}\n\n#[public]\nimpl TimelockController {\n    pub fn new(delay: u64) -> Self {\n        let mut instance = Self::default();\n        instance.min_delay = delay;\n        instance\n    }\n\n    pub fn queue_transaction(&mut self, data: Vec<u8>) -> u64 {\n        let tx_id = self.tx_count;\n        self.tx_count += 1;\n        let t = TimelockedTx {\n            eta: block_timestamp() + self.min_delay,\n            executed: false,\n            data\n        };\n        self.transactions.setter(tx_id).set(t);\n        tx_id\n    }\n\n    pub fn execute_transaction(&mut self, tx_id: u64) -> Result<(), String> {\n        let mut tx = self.transactions.get(tx_id);\n        if tx.executed {\n            return Err(\"Already executed\".into());\n        }\n        if block_timestamp() < tx.eta {\n            return Err(\"Too early\".into());\n        }\n        // In a real contract, you'd do something with tx.data\n        tx.executed = true;\n        self.transactions.setter(tx_id).set(tx);\n        Ok(())\n    }\n}",
+      "category": "Governance",
+      "metadata": {
+        "features": ["Timelock", "Queue"]
+      }
+    },
+    {
+      "instruction": "A crowdsourced contract where users vote to set a global text message, and majority wins",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default, Clone)]\npub struct MessageProposal {\n    text: String,\n    votes_for: u64,\n    votes_against: u64,\n    active: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct CrowdText {\n        current_message: String,\n        proposals: Vec<MessageProposal>\n    }\n}\n\n#[public]\nimpl CrowdText {\n    pub fn propose_message(&mut self, text: String) {\n        let proposal = MessageProposal {\n            text,\n            votes_for: 0,\n            votes_against: 0,\n            active: true\n        };\n        self.proposals.push(proposal);\n    }\n\n    pub fn vote_on_proposal(&mut self, index: usize, support: bool) -> Result<(), String> {\n        if index >= self.proposals.len() {\n            return Err(\"Invalid index\".into());\n        }\n        let mut prop = self.proposals[index].clone();\n        if !prop.active {\n            return Err(\"Proposal is not active\".into());\n        }\n        if support {\n            prop.votes_for += 1;\n        } else {\n            prop.votes_against += 1;\n        }\n        self.proposals[index] = prop;\n        Ok(())\n    }\n\n    pub fn finalize_proposal(&mut self, index: usize) -> Result<(), String> {\n        if index >= self.proposals.len() {\n            return Err(\"Invalid index\".into());\n        }\n        let mut prop = self.proposals[index].clone();\n        if !prop.active {\n            return Err(\"Already finalized\".into());\n        }\n        prop.active = false;\n        if prop.votes_for > prop.votes_against {\n            self.current_message = prop.text;\n        }\n        self.proposals[index] = prop;\n        Ok(())\n    }\n}",
+      "category": "Governance",
+      "metadata": {
+        "features": ["SimpleVoting", "TextProposal"]
+      }
+    },
+    {
+      "instruction": "A contract that implements partial withdrawal from a staking pool, locking the rest",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct PartialStaking {\n        staked: mapping(Address => U256),\n        total_staked: U256\n    }\n}\n\n#[public]\nimpl PartialStaking {\n    pub fn stake(&mut self) {\n        let amount = msg::value();\n        let current = self.staked.get(msg::sender());\n        self.staked.setter(msg::sender()).set(current + amount);\n        self.total_staked += amount;\n    }\n\n    pub fn partial_withdraw(&mut self, amount: U256) -> Result<(), String> {\n        let current = self.staked.get(msg::sender());\n        if current < amount {\n            return Err(\"Insufficient staked amount\".into());\n        }\n        self.staked.setter(msg::sender()).set(current - amount);\n        self.total_staked -= amount;\n        // transfer amount out\n        Ok(())\n    }\n}",
+      "category": "DeFi",
+      "metadata": {
+        "features": ["Staking", "PartialWithdrawal"]
+      }
+    },
+    {
+      "instruction": "An NFT that changes its token URI based on block height, simulating an evolving artwork",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct EvolvingNFTParams;\nimpl Erc721Params for EvolvingNFTParams {\n    const NAME: &'static str = \"EvolvingNFT\";\n    const SYMBOL: &'static str = \"EVN\";\n    fn token_uri(_id: U256) -> String {\n        \"\".into() // We will override with custom logic\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct EvolvingNFT {\n        #[borrow]\n        Erc721<EvolvingNFTParams> erc721;\n        base_uri: String,\n        milestone: u64\n    }\n}\n\n#[public]\n#[inherit(Erc721<EvolvingNFTParams>)]\nimpl EvolvingNFT {\n    pub fn new(uri: String, milestone: u64) -> Self {\n        let mut instance = Self::default();\n        instance.base_uri = uri;\n        instance.milestone = milestone;\n        instance\n    }\n\n    pub fn mint(&mut self, to: Address) -> Result<(), Erc721Error> {\n        self.erc721.mint(to)\n    }\n\n    pub fn dynamic_token_uri(&self, token_id: U256) -> String {\n        let block_num = block_number();\n        if block_num > self.milestone {\n            format!(\"{}-phase2/{}.json\", self.base_uri, token_id)\n        } else {\n            format!(\"{}-phase1/{}.json\", self.base_uri, token_id)\n        }\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["EvolvingMetadata"]
+      }
+    },
+    {
+      "instruction": "A DeFi yield aggregator that deposits funds into multiple protocols (mocked) and tracks share values",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct YieldAggregator {\n        total_shares: U256,\n        balances: mapping(Address => U256),\n        total_value: U256\n    }\n}\n\n#[public]\nimpl YieldAggregator {\n    pub fn deposit(&mut self) {\n        let amount = msg::value();\n        let shares = if self.total_value == U256::zero() {\n            amount\n        } else {\n            (amount * self.total_shares) / self.total_value\n        };\n        self.total_shares += shares;\n        let current_shares = self.balances.get(msg::sender());\n        self.balances.setter(msg::sender()).set(current_shares + shares);\n        self.total_value += amount;\n        // Distribute 'amount' into various protocols\n    }\n\n    pub fn withdraw(&mut self, share_amount: U256) -> Result<(), String> {\n        let user_shares = self.balances.get(msg::sender());\n        if share_amount > user_shares {\n            return Err(\"Not enough shares\".into());\n        }\n        let value_to_return = (share_amount * self.total_value) / self.total_shares;\n        self.total_shares -= share_amount;\n        self.total_value -= value_to_return;\n        self.balances.setter(msg::sender()).set(user_shares - share_amount);\n        // withdraw 'value_to_return' from protocols\n        Ok(())\n    }\n}",
+      "category": "DeFi",
+      "metadata": {
+        "features": ["YieldAggregator", "Shares"]
+      }
+    },
+    {
+      "instruction": "An NFT contract that uses on-chain generative art (pseudo-code) in the token URI response",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct GenerativeNFTParams;\nimpl Erc721Params for GenerativeNFTParams {\n    const NAME: &'static str = \"GenerativeNFT\";\n    const SYMBOL: &'static str = \"GNF\";\n    fn token_uri(_id: U256) -> String {\n        \"\".into()\n    }\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct GenerativeNFT {\n        #[borrow]\n        Erc721<GenerativeNFTParams> erc721;\n        seed_offset: u64\n    }\n}\n\n#[public]\n#[inherit(Erc721<GenerativeNFTParams>)]\nimpl GenerativeNFT {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.seed_offset = block_number();\n        instance\n    }\n\n    pub fn mint_generative(&mut self, to: Address) -> Result<U256, Erc721Error> {\n        let new_token_id = self.erc721.total_supply().unwrap_or(U256::zero()) + U256::one();\n        self.erc721.mint_with_id(to, new_token_id)?;\n        Ok(new_token_id)\n    }\n\n    pub fn generate_uri(&self, token_id: U256) -> String {\n        let seed = (block_hash(block_number()) + U256::from(self.seed_offset) + token_id) % U256::from(1_000_000);\n        format!(\"data:text/plain;base64,GEN_ART_{}\", seed)\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["OnChainArt"]
+      }
+    },
+    {
+      "instruction": "A contract that implements a multi-option poll (e.g., ABCD) and logs final results",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Poll {\n    title: String,\n    options: Vec<String>,\n    votes: Vec<u64>,\n    active: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct MultiOptionPoll {\n        poll: Poll\n    }\n}\n\n#[public]\nimpl MultiOptionPoll {\n    pub fn create_poll(&mut self, title: String, options: Vec<String>) {\n        if self.poll.active {\n            return;\n        }\n        self.poll = Poll {\n            title,\n            options: options.clone(),\n            votes: vec![0; options.len()],\n            active: true\n        };\n    }\n\n    pub fn vote(&mut self, option_index: usize) -> Result<(), String> {\n        if !self.poll.active {\n            return Err(\"No active poll\".into());\n        }\n        if option_index >= self.poll.options.len() {\n            return Err(\"Invalid option\".into());\n        }\n        self.poll.votes[option_index] += 1;\n        Ok(())\n    }\n\n    pub fn close_poll(&mut self) {\n        self.poll.active = false;\n        // In real usage, you might log final results here\n    }\n}",
+      "category": "Governance",
+      "metadata": {
+        "features": ["MultiOptionPoll"]
+      }
+    },
+    {
+      "instruction": "A simple identity contract that lets users register a username and store public keys",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Identity {\n    pub username: String,\n    pub pubkey: String\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct IdentityManager {\n        identities: mapping(Address => Identity)\n    }\n}\n\n#[public]\nimpl IdentityManager {\n    pub fn register(&mut self, username: String, pubkey: String) -> Result<(), String> {\n        let current_id = self.identities.get(msg::sender());\n        if !current_id.username.is_empty() {\n            return Err(\"Identity already registered\".into());\n        }\n        let new_id = Identity {\n            username,\n            pubkey\n        };\n        self.identities.setter(msg::sender()).set(new_id);\n        Ok(())\n    }\n\n    pub fn get_identity(&self, addr: Address) -> Option<Identity> {\n        let id = self.identities.get(addr);\n        if id.username.is_empty() {\n            None\n        } else {\n            Some(id)\n        }\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["Identity"]
+      }
+    },
+    {
+      "instruction": "A contract that provides a matching function for job seekers and job posters, storing job listings and applying users",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Job {\n    pub title: String,\n    pub description: String,\n    pub active: bool,\n    pub applicants: Vec<Address>\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct JobBoard {\n        jobs: Vec<Job>,\n        owner: Address\n    }\n}\n\n#[public]\nimpl JobBoard {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn post_job(&mut self, title: String, description: String) {\n        let job = Job {\n            title,\n            description,\n            active: true,\n            applicants: Vec::new()\n        };\n        self.jobs.push(job);\n    }\n\n    pub fn apply(&mut self, job_id: usize) -> Result<(), String> {\n        if job_id >= self.jobs.len() {\n            return Err(\"Invalid job\".into());\n        }\n        let mut job = &mut self.jobs[job_id];\n        if !job.active {\n            return Err(\"Job not active\".into());\n        }\n        job.applicants.push(msg::sender());\n        Ok(())\n    }\n\n    pub fn close_job(&mut self, job_id: usize) -> Result<(), String> {\n        if job_id >= self.jobs.len() {\n            return Err(\"Invalid job\".into());\n        }\n        if msg::sender() != self.owner {\n            return Err(\"Only owner\".into());\n        }\n        self.jobs[job_id].active = false;\n        Ok(())\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["JobMatching"]
+      }
+    },
+    {
+      "instruction": "A contract that holds a user voting score for an external reputation system, letting them update or reduce it if penalized",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct VotingReputation {\n        scores: mapping(Address => u32),\n        admin: Address\n    }\n}\n\n#[public]\nimpl VotingReputation {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.admin = msg::sender();\n        instance\n    }\n\n    pub fn increase_score(&mut self, user: Address, delta: u32) -> Result<(), String> {\n        if msg::sender() != self.admin {\n            return Err(\"Only admin\".into());\n        }\n        let current = self.scores.get(user);\n        self.scores.setter(user).set(current + delta);\n        Ok(())\n    }\n\n    pub fn penalize(&mut self, user: Address, penalty: u32) -> Result<(), String> {\n        if msg::sender() != self.admin {\n            return Err(\"Only admin\".into());\n        }\n        let current = self.scores.get(user);\n        if current < penalty {\n            self.scores.setter(user).set(0);\n        } else {\n            self.scores.setter(user).set(current - penalty);\n        }\n        Ok(())\n    }\n\n    pub fn get_score(&self, user: Address) -> u32 {\n        self.scores.get(user)\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["VotingReputation"]
+      }
+    },
+    {
+      "instruction": "A contract implementing a betting system where each user picks a sports outcome, funds are pooled, and the winner claims all",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct Bet {\n    choice: u8,\n    amount: U256\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct SportsBet {\n        bets: mapping(Address => Bet),\n        total_pool: U256,\n        winning_choice: u8,\n        concluded: bool\n    }\n}\n\n#[public]\nimpl SportsBet {\n    pub fn place_bet(&mut self, choice: u8) -> Result<(), String> {\n        if self.concluded {\n            return Err(\"Betting ended\".into());\n        }\n        let amount = msg::value();\n        let b = Bet {\n            choice,\n            amount\n        };\n        self.total_pool += amount;\n        self.bets.setter(msg::sender()).set(b);\n        Ok(())\n    }\n\n    pub fn end_betting(&mut self, winning_choice: u8) {\n        // Only contract owner or authority would call in real usage\n        self.winning_choice = winning_choice;\n        self.concluded = true;\n    }\n\n    pub fn claim_win(&mut self) -> Result<(), String> {\n        if !self.concluded {\n            return Err(\"Bet not concluded\".into());\n        }\n        let bet = self.bets.get(msg::sender());\n        if bet.choice != self.winning_choice {\n            return Err(\"Not a winner\".into());\n        }\n        // In real usage, we'd distribute the total_pool proportionally, here we do a simple approach\n        // transfer bet.amount plus share of losers' amounts to the winner\n        Ok(())\n    }\n}",
+      "category": "Game",
+      "metadata": {
+        "features": ["SportsBetting"]
+      }
+    },
+    {
+      "instruction": "A membership NFT that stores an expiration date, requiring renewal to maintain membership status",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct MembershipNFTParams;\nimpl Erc721Params for MembershipNFTParams {\n    const NAME: &'static str = \"ExpiringMembership\";\n    const SYMBOL: &'static str = \"EMB\";\n    fn token_uri(_id: U256) -> String {\n        \"https://membership.example/\".into()\n    }\n}\n\n#[derive(Default)]\npub struct MemberData {\n    pub expiry: u64\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct ExpiringMembership {\n        #[borrow]\n        Erc721<MembershipNFTParams> erc721;\n        membership_info: mapping(U256 => MemberData)\n    }\n}\n\n#[public]\n#[inherit(Erc721<MembershipNFTParams>)]\nimpl ExpiringMembership {\n    pub fn mint_membership(&mut self, to: Address, duration: u64) -> Result<U256, Erc721Error> {\n        let token_id = self.erc721.total_supply().unwrap_or(U256::zero()) + U256::one();\n        self.erc721.mint_with_id(to, token_id)?;\n        self.membership_info.setter(token_id).set(MemberData {\n            expiry: block_timestamp() + duration\n        });\n        Ok(token_id)\n    }\n\n    pub fn renew_membership(&mut self, token_id: U256, extra: u64) -> Result<(), Erc721Error> {\n        let mut data = self.membership_info.get(token_id);\n        let owner = self.erc721.owner_of(token_id)?;\n        if owner != msg::sender() {\n            return Err(Erc721Error::Custom(\"Not owner\".into()));\n        }\n        data.expiry += extra;\n        self.membership_info.setter(token_id).set(data);\n        Ok(())\n    }\n\n    pub fn is_active(&self, token_id: U256) -> bool {\n        let data = self.membership_info.get(token_id);\n        block_timestamp() < data.expiry\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["ExpiringMembership"]
+      }
+    },
+    {
+      "instruction": "A proof-of-existence contract where users can register a document hash to prove it existed at a certain time",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct ProofOfExistence {\n        documents: mapping([u8; 32] => u64) // hash -> block timestamp\n    }\n}\n\n#[public]\nimpl ProofOfExistence {\n    pub fn register_document(&mut self, doc_hash: [u8; 32]) -> Result<(), String> {\n        if self.documents.get(doc_hash) != 0 {\n            return Err(\"Already registered\".into());\n        }\n        self.documents.setter(doc_hash).set(block_timestamp());\n        Ok(())\n    }\n\n    pub fn verify_document(&self, doc_hash: [u8; 32]) -> bool {\n        self.documents.get(doc_hash) != 0\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["ProofOfExistence"]
+      }
+    },
+    {
+      "instruction": "An ERC721 that automatically lists minted tokens on a built-in marketplace for immediate sale",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct AutoMarketNFTParams;\nimpl Erc721Params for AutoMarketNFTParams {\n    const NAME: &'static str = \"AutoMarketNFT\";\n    const SYMBOL: &'static str = \"AMN\";\n    fn token_uri(_id: U256) -> String {\n        \"https://automarket.example/\".into()\n    }\n}\n\n#[derive(Default)]\npub struct Listing {\n    price: U256,\n    active: bool\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct AutoMarketNFT {\n        #[borrow]\n        Erc721<AutoMarketNFTParams> erc721;\n        listings: mapping(U256 => Listing)\n    }\n}\n\n#[public]\n#[inherit(Erc721<AutoMarketNFTParams>)]\nimpl AutoMarketNFT {\n    pub fn mint_and_list(&mut self, to: Address, price: U256) -> Result<(), Erc721Error> {\n        let token_id = self.erc721.total_supply().unwrap_or(U256::zero()) + U256::one();\n        self.erc721.mint_with_id(to, token_id)?;\n        self.listings.setter(token_id).set(Listing {\n            price,\n            active: true\n        });\n        Ok(())\n    }\n\n    pub fn buy(&mut self, token_id: U256) -> Result<(), String> {\n        let listing = self.listings.get(token_id);\n        if !listing.active {\n            return Err(\"Not for sale\".into());\n        }\n        let sent = msg::value();\n        if sent < listing.price {\n            return Err(\"Insufficient payment\".into());\n        }\n        let owner = self.erc721.owner_of(token_id).map_err(|e| format!(\"{:?}\", e))?;\n        // transfer funds to owner\n        self.erc721.transfer_from(owner, msg::sender(), token_id).map_err(|e| format!(\"{:?}\", e))?;\n        // deactivate listing\n        let mut updated = listing;\n        updated.active = false;\n        self.listings.setter(token_id).set(updated);\n        Ok(())\n    }\n}",
+      "category": "NFT",
+      "metadata": {
+        "features": ["AutoListing"]
+      }
+    },
+    {
+      "instruction": "A minimal contract that demonstrates the fallback function by incrementing a counter on any unknown call",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct FallbackCounter {\n        count: u64\n    }\n}\n\n#[public]\nimpl FallbackCounter {\n    #[fallback]\n    pub fn fallback(&mut self) {\n        self.count += 1;\n    }\n\n    pub fn get_count(&self) -> u64 {\n        self.count\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["FallbackCounter"]
+      }
+    },
+    {
+      "instruction": "A subscription-based password manager contract that stores encrypted notes for users (stubbed encryption)",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Default)]\npub struct EncryptedNote {\n    pub data: String\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct PasswordManager {\n        subscription_ends: mapping(Address => u64),\n        notes: mapping(Address => Vec<EncryptedNote>),\n        monthly_fee: U256\n    }\n}\n\n#[public]\nimpl PasswordManager {\n    pub fn new(fee: U256) -> Self {\n        let mut instance = Self::default();\n        instance.monthly_fee = fee;\n        instance\n    }\n\n    pub fn subscribe(&mut self) -> Result<(), String> {\n        let paid = msg::value();\n        if paid < self.monthly_fee {\n            return Err(\"Insufficient fee\".into());\n        }\n        let now = block_timestamp();\n        let current_end = self.subscription_ends.get(msg::sender());\n        let new_end = if current_end < now {\n            now + 30 * 86400\n        } else {\n            current_end + 30 * 86400\n        };\n        self.subscription_ends.setter(msg::sender()).set(new_end);\n        Ok(())\n    }\n\n    pub fn store_note(&mut self, encrypted_data: String) -> Result<(), String> {\n        if !self.is_subscribed(msg::sender()) {\n            return Err(\"Subscription inactive\".into());\n        }\n        let mut user_notes = self.notes.get(msg::sender());\n        user_notes.push(EncryptedNote { data: encrypted_data });\n        self.notes.setter(msg::sender()).set(user_notes);\n        Ok(())\n    }\n\n    pub fn is_subscribed(&self, user: Address) -> bool {\n        let now = block_timestamp();\n        self.subscription_ends.get(user) > now\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["EncryptedStorage", "Subscription"]
+      }
+    },
+    {
+      "instruction": "An ERC20-based scholarship fund that releases tokens to students once a month, upon admin approval",
+      "code": "use stylus_sdk::prelude::*;\n\npub struct ScholarshipTokenParams;\nimpl Erc20Params for ScholarshipTokenParams {\n    const NAME: &'static str = \"ScholarshipToken\";\n    const SYMBOL: &'static str = \"SCH\";\n    const DECIMALS: u8 = 18;\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct ScholarshipFund {\n        #[borrow]\n        Erc20<ScholarshipTokenParams> erc20;\n        admin: Address,\n        student_balances: mapping(Address => U256),\n        last_claim: mapping(Address => u64)\n    }\n}\n\n#[public]\n#[inherit(Erc20<ScholarshipTokenParams>)]\nimpl ScholarshipFund {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.admin = msg::sender();\n        instance\n    }\n\n    pub fn add_student(&mut self, student: Address, monthly_amount: U256) -> Result<(), String> {\n        if msg::sender() != self.admin {\n            return Err(\"Only admin\".into());\n        }\n        self.student_balances.setter(student).set(monthly_amount);\n        Ok(())\n    }\n\n    pub fn claim_tokens(&mut self) -> Result<(), String> {\n        let student = msg::sender();\n        let monthly_amount = self.student_balances.get(student);\n        if monthly_amount == U256::zero() {\n            return Err(\"Not a student\".into());\n        }\n        let now = block_timestamp();\n        let last = self.last_claim.get(student);\n        if now < last + 30 * 86400 {\n            return Err(\"Not time for next claim\".into());\n        }\n        self.erc20.mint(student, monthly_amount).map_err(|e| format!(\"{:?}\", e))?;\n        self.last_claim.setter(student).set(now);\n        Ok(())\n    }\n}",
+      "category": "ERC20",
+      "metadata": {
+        "features": ["Scholarship", "Mintable"]
+      }
+    },
+    {
+      "instruction": "A contract that logs a user's online status and updates it periodically, simulating a presence indicator",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct Presence {\n        last_online: mapping(Address => u64)\n    }\n}\n\n#[public]\nimpl Presence {\n    pub fn ping(&mut self) {\n        self.last_online.setter(msg::sender()).set(block_timestamp());\n    }\n\n    pub fn get_last_online(&self, user: Address) -> u64 {\n        self.last_online.get(user)\n    }\n\n    pub fn is_online(&self, user: Address, threshold: u64) -> bool {\n        // threshold is how many seconds to consider 'online'\n        let last = self.last_online.get(user);\n        block_timestamp() - last < threshold\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["Presence"]
+      }
+    },
+    {
+      "instruction": "A contract that simulates a multi-level marketing tree, storing referrals and paying out rewards from a reward pool",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct MLM {\n        referrer: mapping(Address => Address),\n        balance: U256,\n        owner: Address\n    }\n}\n\n#[public]\nimpl MLM {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn join(&mut self, parent: Address) {\n        if self.referrer.get(msg::sender()) != Address::ZERO {\n            // already joined\n            return;\n        }\n        self.referrer.setter(msg::sender()).set(parent);\n    }\n\n    pub fn pay_in(&mut self) {\n        let payment = msg::value();\n        self.balance += payment;\n    }\n\n    pub fn distribute_rewards(&mut self) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner\".into());\n        }\n        // Stub distribution logic: walk up chain of referrers\n        Ok(())\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["MLM", "ReferralRewards"]
+      }
+    },
+    {
+      "instruction": "A contract that stores user-submitted code snippets (text) and tags them by language",
+      "code": "use stylus_sdk::prelude::*;\n\n#[derive(Clone, Default)]\npub struct Snippet {\n    language: String,\n    content: String\n}\n\nsol_storage! {\n    #[entrypoint]\n    pub struct CodeSnippetRegistry {\n        snippets: mapping(Address => Vec<Snippet>)\n    }\n}\n\n#[public]\nimpl CodeSnippetRegistry {\n    pub fn add_snippet(&mut self, language: String, content: String) {\n        let mut user_snippets = self.snippets.get(msg::sender());\n        user_snippets.push(Snippet { language, content });\n        self.snippets.setter(msg::sender()).set(user_snippets);\n    }\n\n    pub fn get_snippets_count(&self, user: Address) -> usize {\n        self.snippets.get(user).len()\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["SnippetStorage"]
+      }
+    },
+    {
+      "instruction": "A minimal oracle contract that stores a single data value updated by its owner, used by external calls for price info",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct SimpleOracle {\n        owner: Address,\n        data: U256\n    }\n}\n\n#[public]\nimpl SimpleOracle {\n    pub fn new() -> Self {\n        let mut instance = Self::default();\n        instance.owner = msg::sender();\n        instance\n    }\n\n    pub fn update_data(&mut self, value: U256) -> Result<(), String> {\n        if msg::sender() != self.owner {\n            return Err(\"Only owner\".into());\n        }\n        self.data = value;\n        Ok(())\n    }\n\n    pub fn get_data(&self) -> U256 {\n        self.data\n    }\n}",
+      "category": "Oracle",
+      "metadata": {
+        "features": ["SingleValue", "Updatable"]
+      }
+    },
+    {
+      "instruction": "A very basic faucet that limits how much each address can withdraw in a 24-hour period",
+      "code": "use stylus_sdk::prelude::*;\n\nsol_storage! {\n    #[entrypoint]\n    pub struct DailyFaucet {\n        distributed_today: mapping(Address => U256),\n        last_day: mapping(Address => u64),\n        daily_limit: U256\n    }\n}\n\n#[public]\nimpl DailyFaucet {\n    pub fn new(limit: U256) -> Self {\n        let mut instance = Self::default();\n        instance.daily_limit = limit;\n        instance\n    }\n\n    pub fn claim(&mut self, amount: U256) -> Result<(), String> {\n        let current_day = block_number() / 6500;\n        let user = msg::sender();\n        let last_claim_day = self.last_day.get(user);\n        let mut distributed = self.distributed_today.get(user);\n        if current_day != last_claim_day {\n            distributed = U256::zero();\n            self.distributed_today.setter(user).set(distributed);\n            self.last_day.setter(user).set(current_day);\n        }\n        if distributed + amount > self.daily_limit {\n            return Err(\"Daily limit exceeded\".into());\n        }\n        self.distributed_today.setter(user).set(distributed + amount);\n        // faucet distribution logic\n        Ok(())\n    }\n}",
+      "category": "Utility",
+      "metadata": {
+        "features": ["DailyLimitFaucet"]
+      }
+    }
+  ]
+  

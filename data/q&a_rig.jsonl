@@ -1,0 +1,3 @@
+{"question": "What is required to create a basic agent with OpenAI's GPT model?", "answer": "An OPENAI_API_KEY environment variable"}
+{"question": "How does the provided code implement async operation for the agent?", "answer": "Using Tokio's async runtime, specifically the `#[tokio::main]` macro and the `.await?` method"}
+{"question": "What is the purpose of the `preamble` method in the agent creation process?", "answer": "To set a context prompt for the agent, defining its role or behavior, such as being a comedian in this case"}

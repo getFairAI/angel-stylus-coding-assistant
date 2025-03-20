@@ -1,0 +1,892 @@
+[
+  {
+    "instruction": "Use RIG to prompt an OpenAI model (GPT-4) with a question and print the response.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() {\n    // Create OpenAI client and model\n    let openai_client = openai::Client::from_env();\n    let gpt4 = openai_client.agent(\"gpt-4\").build();\n\n    // Prompt the model and get response\n    let response = gpt4.prompt(\"Who are you?\").await.expect(\"Failed to get response\");\n    println!(\"Model says: {}\", response);\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "LLM Completion"
+      ]
+    }
+  },
+  {
+    "instruction": "Implement a comedic chatbot agent with RIG using GPT-4, providing humorous responses.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Create an agent with a humorous persona\n    let comedian_agent = client.agent(\"gpt-4\")\n        .preamble(\"You are a comedian who tells jokes in response to the user.\")\n        .build();\n\n    // Prompt the agent and print the humorous response\n    let joke = comedian_agent.prompt(\"Tell me a funny story about a cat.\").await?;\n    println!(\"{}\", joke);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Custom Preamble",
+        "LLM Completion"
+      ]
+    }
+  },
+  {
+    "instruction": "Create a RIG agent that can use a calculator tool to answer math questions.",
+    "code": "use rig::{tools::Tool, providers::openai};\n\n// Define a simple calculator tool function\nfn add_numbers(args: (i32, i32)) -> Result<i32, String> {\n    let (x, y) = args;\n    Ok(x + y)\n}\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Register the calculator tool with the agent\n    let agent = client.agent(\"gpt-4\")\n        .tool(\"add\", add_numbers)\n        .build();\n\n    // Use the agent to answer a math question using the tool\n    let answer = agent.prompt(\"What is 2 + 3? Use the add tool if needed.\").await?;\n    println!(\"Answer: {}\", answer);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Tool Usage",
+        "Function Calling"
+      ]
+    }
+  },
+  {
+    "instruction": "Demonstrate prompt chaining in RIG by using the output of one model prompt as input to another.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // First prompt: generate a question\n    let question_agent = client.agent(\"gpt-3.5-turbo\").build();\n    let intermediate = question_agent.prompt(\"Generate a trivia question about space.\").await?;\n\n    // Second prompt: answer the generated question\n    let answer_agent = client.agent(\"gpt-4\").build();\n    let final_answer = answer_agent.prompt(format!(\"{} - Provide the answer.\", intermediate)).await?;\n    println!(\"Q: {}\\nA: {}\", intermediate, final_answer);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Prompt Chaining",
+        "Multiple Models"
+      ]
+    }
+  },
+  {
+    "instruction": "Use RIG to route user queries to different specialized agents based on the query type.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Create two specialized agents\n    let math_agent = client.agent(\"gpt-4\")\n        .preamble(\"You are a math expert.\")\n        .build();\n    let story_agent = client.agent(\"gpt-4\")\n        .preamble(\"You are a storyteller.\")\n        .build();\n\n    // Simple routing logic based on input\n    let user_input = \"What is 12 * 8?\";\n    let response = if user_input.contains('*') || user_input.contains('+') {\n        math_agent.prompt(user_input).await?\n    } else {\n        story_agent.prompt(user_input).await?\n    };\n    println!(\"Agent response: {}\", response);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Agent Routing",
+        "Multiple Agents"
+      ]
+    }
+  },
+  {
+    "instruction": "Create a multi-turn conversational agent with RIG that retains context across exchanges.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai, memory::ConversationMemory};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Create an agent with conversational memory to retain context\n    let mut chat_agent = client.agent(\"gpt-3.5-turbo\")\n        .memory(ConversationMemory::default())\n        .build();\n\n    // Simulate a conversation\n    let q1 = \"Hello, my name is Alice.\";\n    let a1 = chat_agent.prompt(q1).await?;\n    println!(\"Assistant: {}\", a1);\n\n    // Next turn uses memory of the name Alice\n    let q2 = \"Can you remind me what my name is?\";\n    let a2 = chat_agent.prompt(q2).await?;\n    println!(\"Assistant: {}\", a2);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Conversation Memory",
+        "Context Retention"
+      ]
+    }
+  },
+  {
+    "instruction": "Simulate a debate between two AI agents on a given topic using RIG.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Two agents with different perspectives\n    let pro_agent = client.agent(\"gpt-4\")\n        .preamble(\"You defend the statement: 'AI will benefit humanity greatly.'\")\n        .build();\n    let con_agent = client.agent(\"gpt-4\")\n        .preamble(\"You oppose the statement: 'AI will benefit humanity greatly.'\")\n        .build();\n\n    // Simulate a debate\n    let topic = \"Debate: AI will benefit humanity greatly.\";\n    let pro_arg = pro_agent.prompt(topic).await?;\n    let con_arg = con_agent.prompt(topic).await?;\n    println!(\"Pro: {}\", pro_arg);\n    println!(\"Con: {}\", con_arg);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Multi-Agent",
+        "Contrasting Preambles"
+      ]
+    }
+  },
+  {
+    "instruction": "Build an autonomous RIG agent that iteratively refines its answer until a condition is met.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\nuse std::time::Duration;\nuse tokio::time::sleep;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    let mut agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Keep refining your answer until it mentions 'Rust programming'.\")\n        .build();\n\n    let mut response = String::new();\n    // Iteratively refine response until condition met or max loops\n    for _ in 0..5 {\n        response = agent.prompt(\"Explain the benefits of learning programming.\").await?;\n        if response.contains(\"Rust\") {\n            break;\n        }\n        // Modify agent's internal state or question if needed (simplified here)\n        sleep(Duration::from_millis(500)).await;\n    }\n    println!(\"Final response: {}\", response);\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Autonomous Loop",
+        "Conditional Refinement"
+      ]
+    }
+  },
+  {
+    "instruction": "Have one RIG agent generate an answer and another agent evaluate and improve it.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Agent to generate an answer\n    let answer_agent = client.agent(\"gpt-3.5-turbo\").build();\n    // Agent to evaluate and improve the answer\n    let evaluator_agent = client.agent(\"gpt-4\")\n        .preamble(\"You are a strict reviewer who suggests improvements to the answer.\")\n        .build();\n\n    let question = \"Explain quantum computing in simple terms.\";\n    let draft = answer_agent.prompt(question).await?;\n    let review = evaluator_agent.prompt(format!(\"Answer: {}\\nReview and improve this answer.\", draft)).await?;\n    println!(\"Initial Answer: {}\", draft);\n    println!(\"Improved Answer: {}\", review);\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Evaluator Agent",
+        "Answer Optimization"
+      ]
+    }
+  },
+  {
+    "instruction": "Coordinate multiple sub-agents with a custom orchestrator logic using RIG.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\nasync fn answer_math(client: &openai::Client, query: &str) -> String {\n    client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"You are a math solver.\")\n        .build()\n        .prompt(query).await.unwrap_or_default()\n}\n\nasync fn answer_story(client: &openai::Client, query: &str) -> String {\n    client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"You are a creative storyteller.\")\n        .build()\n        .prompt(query).await.unwrap_or_default()\n}\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Orchestrator logic: pick a sub-agent based on query and use it\n    let query = \"Once upon a time, there were two numbers to add: 4 and 5.\";\n    let result = if query.contains(\"add:\") {\n        answer_math(&client, query).await\n    } else {\n        answer_story(&client, query).await\n    };\n    println!(\"Orchestrator result: {}\", result);\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Orchestration",
+        "Conditional Agent Delegation"
+      ]
+    }
+  },
+  {
+    "instruction": "Run multiple prompts in parallel using RIG's asynchronous capabilities for faster throughput.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\nuse futures::future::join_all;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\").build();\n    // Prepare multiple independent prompts\n    let prompts = vec![\n        \"Translate 'Hello' to French.\",\n        \"Translate 'Goodbye' to Spanish.\",\n        \"Translate 'Thank you' to German.\"\n    ];\n    // Fire off prompts in parallel\n    let tasks = prompts.into_iter().map(|p| agent.prompt(p));\n    let results = join_all(tasks).await;\n    for res in results {\n        println!(\"Result: {}\", res?);\n    }\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Parallel Prompts",
+        "Asynchronous"
+      ]
+    }
+  },
+  {
+    "instruction": "Include additional context (e.g., documentation text) in a RIG agent's prompt to improve answer accuracy.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let docs = \"Rust is a systems programming language focused on safety and performance.\";\n    let client = openai::Client::from_env();\n    // Agent with context included in prompt\n    let agent = client.agent(\"gpt-4\").build();\n    let question = \"What are the key features of Rust?\";\n    let response = agent.prompt(format!(\"Context: {}\\nQuestion: {}\", docs, question)).await?;\n    println!(\"{}\", response);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Context Injection",
+        "Knowledge Augmentation"
+      ]
+    }
+  },
+  {
+    "instruction": "Use RIG's DeepSeek feature to search within large text and answer a query based on relevant sections.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai, search::DeepSeek};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let large_text = \"Chapter1: ... long text ... Chapter2: ... long text ...\";\n    let client = openai::Client::from_env();\n    // Agent with DeepSeek enabled to find relevant part\n    let agent = client.agent(\"gpt-4\")\n        .searcher(DeepSeek::default())  // assume DeepSeek integration\n        .build();\n    let query = \"Find information about Chapter2's main idea.\";\n    let answer = agent.prompt(query).await?;\n    println!(\"{}\", answer);\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "DeepSeek Search",
+        "Large Context Handling"
+      ]
+    }
+  },
+  {
+    "instruction": "Demonstrate using an echo chamber technique in RIG to refine an answer over multiple internal iterations.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai, echo::EchoChamber};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Agent that uses an echo chamber technique to refine answers\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .echo_chamber(EchoChamber::new(3))  // e.g., allow 3 internal echo iterations\n        .build();\n    let query = \"What is the meaning of life?\";\n    let answer = agent.prompt(query).await?;\n    println!(\"{}\", answer);\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Echo Chamber",
+        "Iterative Refinement"
+      ]
+    }
+  },
+  {
+    "instruction": "Load external data from a file and feed it into a RIG agent for processing (e.g., summarization).",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai, loaders::FileLoader};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Load content from a file\n    let text = FileLoader::load(\"example.txt\").unwrap_or_default();\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\").build();\n    let summary = agent.prompt(format!(\"Summarize the following:\\n{}\", text)).await?;\n    println!(\"Summary: {}\", summary);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Data Loading",
+        "File I/O"
+      ]
+    }
+  },
+  {
+    "instruction": "Run a local Llama2 model using RIG's Ollama integration for offline inference.",
+    "code": "use rig::providers::ollama;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Use a local LLM via Ollama integration\n    let client = ollama::Client::default();\n    let agent = client.agent(\"llama2-7b-chat\").build();\n    let response = agent.prompt(\"Hello, how do you work offline?\").await?;\n    println!(\"{}\", response);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-ollama (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Local Model",
+        "Offline Inference"
+      ]
+    }
+  },
+  {
+    "instruction": "Use a Together.ai hosted model via RIG to generate text (e.g., a creative recipe).",
+    "code": "use rig::providers::together;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Use Together.ai to run an LLM\n    let client = together::Client::from_env();\n    let agent = client.agent(\"together-gpt-jumbo\").build();\n    let result = agent.prompt(\"Generate a creative recipe for a cake.\").await?;\n    println!(\"{}\", result);\n    Ok(())\n}\n",
+    "category": "Integration",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-together (integration)",
+        "tokio"
+      ],
+      "features": [
+        "External Provider",
+        "Text Generation"
+      ]
+    }
+  },
+  {
+    "instruction": "Use Anthropic's Claude model via RIG to get a completion for a given prompt.",
+    "code": "use rig::providers::anthropic;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Create an Anthropic client and use Claude model\n    let client = anthropic::Client::from_env();\n    let agent = client.agent(\"claude-2\").build();\n    let answer = agent.prompt(\"What are some benefits of renewable energy?\").await?;\n    println!(\"{}\", answer);\n    Ok(())\n}\n",
+    "category": "Integration",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-anthropic (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Anthropic API",
+        "LLM Completion"
+      ]
+    }
+  },
+  {
+    "instruction": "Stream completion tokens from an Anthropic Claude model using RIG for real-time output.",
+    "code": "use rig::providers::anthropic;\nuse futures::StreamExt;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = anthropic::Client::from_env();\n    let mut stream_agent = client.agent(\"claude-instant\").streaming(true).build();\n    let mut stream = stream_agent.stream_prompt(\"Tell a short story about a robot.\").await?;\n    while let Some(chunk) = stream.next().await {\n        print!(\"{}\", chunk?);\n    }\n    Ok(())\n}\n",
+    "category": "Integration",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-anthropic (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Streaming Output",
+        "Anthropic Claude"
+      ]
+    }
+  },
+  {
+    "instruction": "Combine Anthropic's Claude model with an external tool in RIG (e.g., a dictionary lookup tool).",
+    "code": "use rig::{providers::anthropic, tools::Tool};\n\n// Define a dummy tool (e.g., a dictionary lookup)\nfn define_word(word: &str) -> Result<String, String> {\n    Ok(format!(\"{} means: [definition]\", word))\n}\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = anthropic::Client::from_env();\n    let agent = client.agent(\"claude-2\")\n        .tool(\"define\", define_word)\n        .build();\n    let response = agent.prompt(\"Define 'rigorous' using the define tool.\").await?;\n    println!(\"{}\", response);\n    Ok(())\n}\n",
+    "category": "Advanced",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-anthropic (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Tool Usage",
+        "Anthropic Claude"
+      ]
+    }
+  },
+  {
+    "instruction": "Perform sentiment analysis on example texts using a RIG agent as a sentiment classifier.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let sentiments = [\n        \"I love this product, it is fantastic!\",\n        \"This is the worst experience I've ever had.\"\n    ];\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"You are a sentiment classifier. Respond only with 'Positive', 'Negative', or 'Neutral'.\")\n        .build();\n    for text in sentiments.iter() {\n        let label = agent.prompt(text).await?;\n        println!(\"Text: {} -> Sentiment: {}\", text, label);\n    }\n    Ok(())\n}\n",
+    "category": "NLP",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Text Classification",
+        "Preamble Prompt"
+      ]
+    }
+  },
+  {
+    "instruction": "Extract structured information (e.g., name, age, city, employer) from a sentence using a RIG extractor agent.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let text = \"John Doe (age 30) lives in New York and works at Acme Corp.\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Extract the person's name, age, city, and employer as JSON.\")\n        .build();\n    let result = agent.prompt(text).await?;\n    println!(\"Extracted info: {}\", result);\n    Ok(())\n}\n",
+    "category": "NLP",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Information Extraction",
+        "Structured Output"
+      ]
+    }
+  },
+  {
+    "instruction": "Use DeepSeek with RIG to find specific information within a document (e.g., retrieve Bob's age from text).",
+    "code": "use rig::{providers::openai, search::DeepSeek};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let document = \"Section1: Alice: 20\\nSection2: Bob: 25\\nSection3: Carol: 30\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\")\n        .searcher(DeepSeek::default())\n        .preamble(\"Find the age of Bob in the document.\")\n        .build();\n    let result = agent.prompt(document).await?;\n    println!(\"Bob's age: {}\", result);\n    Ok(())\n}\n",
+    "category": "NLP",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "DeepSeek",
+        "Targeted Extraction"
+      ]
+    }
+  },
+  {
+    "instruction": "Use Google's Gemini model via RIG to get an answer for a factual question.",
+    "code": "use rig::providers::gemini;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Use Google's Gemini model for text completion\n    let client = gemini::Client::from_env();\n    let agent = client.agent(\"gemini\").build();\n    let answer = agent.prompt(\"What's the distance from Earth to Mars?\").await?;\n    println!(\"{}\", answer);\n    Ok(())\n}\n",
+    "category": "Integration",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-gemini (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Gemini Model",
+        "LLM Completion"
+      ]
+    }
+  },
+  {
+    "instruction": "Generate text embeddings using Google's Gemini model via RIG and use them for similarity comparison.",
+    "code": "use rig::providers::gemini;\nuse rig::embeddings::EmbeddingsBuilder;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = gemini::Client::from_env();\n    let embed_model = client.embedding_model(\"gemini-embed-v1\");\n    let embeddings = EmbeddingsBuilder::new(embed_model.clone()).build();\n    let texts = [\"Hello world\", \"Goodbye\"];\n    for text in texts {\n        let vector = embeddings.embed(text).await?;\n        println!(\"Embedding for '{}': {:?}\", text, vector);\n    }\n    Ok(())\n}\n",
+    "category": "Integration",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-gemini (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Embeddings",
+        "Similarity Search"
+      ]
+    }
+  },
+  {
+    "instruction": "Extract specific fields from a text using RIG with Google's Gemini model (e.g., customer name and product).",
+    "code": "use rig::{providers::gemini, completion::Prompt};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let text = \"Client: Alice, Product: Laptop, Price: $1200.\";\n    let client = gemini::Client::from_env();\n    let agent = client.agent(\"gemini\")\n        .preamble(\"Extract customer name and product from the input.\")\n        .build();\n    let output = agent.prompt(text).await?;\n    println!(\"{}\", output);\n    Ok(())\n}\n",
+    "category": "NLP",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-gemini (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Information Extraction",
+        "Gemini Model"
+      ]
+    }
+  },
+  {
+    "instruction": "Describe the content of an image using RIG by providing an image (in base64) to an Anthropic Claude agent.",
+    "code": "use rig::{providers::anthropic, completion::ImagePrompt};\nuse reqwest::Client;\nuse base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Fetch an image and convert to base64\n    let img_url = \"https://example.com/cat.jpg\";\n    let image_bytes = Client::new().get(img_url).send().await?.bytes().await?;\n    let img_base64 = BASE64.encode(image_bytes);\n\n    // Create an Anthropic Claude agent for image description\n    let client = anthropic::Client::from_env();\n    let agent = client.agent(\"claude-2\")\n        .preamble(\"You are an image captioning assistant.\")\n        .build();\n\n    // Prompt the agent with the image (as base64)\n    let image_prompt = ImagePrompt::new(img_base64);\n    let description = agent.prompt(image_prompt).await?;\n    println!(\"Image description: {}\", description);\n    Ok(())\n}\n",
+    "category": "Vision",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-anthropic (integration)",
+        "reqwest",
+        "base64",
+        "tokio"
+      ],
+      "features": [
+        "Image to Text",
+        "Anthropic Claude"
+      ]
+    }
+  },
+  {
+    "instruction": "Use a local vision-capable model via RIG's Ollama integration to analyze an image provided as base64.",
+    "code": "use rig::{providers::ollama, completion::ImagePrompt};\nuse std::fs;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Load an image file and base64 encode it\n    let image_data = fs::read(\"local_image.png\")?;\n    let image_base64 = base64::encode(image_data);\n\n    // Use a local model via Ollama for image analysis\n    let client = ollama::Client::default();\n    let agent = client.agent(\"llama2-vision\").build();\n    let prompt = ImagePrompt::new(image_base64);\n    let result = agent.prompt(prompt).await?;\n    println!(\"Local model analysis: {}\", result);\n    Ok(())\n}\n",
+    "category": "Vision",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-ollama (integration)",
+        "base64",
+        "tokio"
+      ],
+      "features": [
+        "Image Analysis",
+        "Local Model"
+      ]
+    }
+  },
+  {
+    "instruction": "Implement retrieval-augmented generation (RAG) in RIG by embedding documents and using them to answer a question.",
+    "code": "use rig::{providers::openai, embeddings::EmbeddingsBuilder, vectorstores::InMemoryVectorStore};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Sample documents\n    let docs = vec![\n        \"Doc1: Rust is a programming language focused on safety.\",\n        \"Doc2: Python is a programming language great for rapid development.\"\n    ];\n    // Create OpenAI embedding model\n    let client = openai::Client::from_env();\n    let embed_model = client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);\n    // Embed documents and create vector store\n    let embeddings = EmbeddingsBuilder::new(embed_model.clone()).build();\n    let store = InMemoryVectorStore::from_texts(&docs, &embeddings).await?;\n    // Query the store for relevant doc and ask question\n    let query = \"Which language is focused on safety?\";\n    let results = store.search(embed_model.embed(query).await?, 1)?;\n    let context = results.first().map(|d| d.text.clone()).unwrap_or_default();\n    // Use context with LLM to answer\n    let answer = client.agent(\"gpt-4\").build()\n        .prompt(format!(\"Context: {}\\nQuestion: {}\", context, query)).await?;\n    println!(\"Answer: {}\", answer);\n    Ok(())\n}\n",
+    "category": "Retrieval",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Embeddings",
+        "Vector Search",
+        "Contextual QA"
+      ]
+    }
+  },
+  {
+    "instruction": "Dynamically invoke external tools (e.g., a web search) in a RIG retrieval-augmented generation workflow for answering a query.",
+    "code": "use rig::{providers::openai, tools::WebSearchTool, retrieval::Retriever};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // A dynamic tool: web search for RAG\n    let search_tool = WebSearchTool::new(); // hypothetical web search tool\n    let agent = client.agent(\"gpt-4\")\n        .tool(\"search\", search_tool)\n        .preamble(\"Use the search tool to find information if needed.\")\n        .build();\n    let query = \"Who won the World Cup in 2018?\";\n    let answer = agent.prompt(query).await?;\n    println!(\"Answer: {}\", answer);\n    Ok(())\n}\n",
+    "category": "Retrieval",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Dynamic Tools",
+        "Web Retrieval"
+      ]
+    }
+  },
+  {
+    "instruction": "Perform retrieval-augmented generation with a local LLM using RIG by embedding text and querying it for an answer.",
+    "code": "use rig::{providers::ollama, embeddings::EmbeddingsBuilder, vectorstores::InMemoryVectorStore};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let docs = vec![\"The sky is blue.\", \"Grass is green.\"];\n    let client = ollama::Client::default();\n    let embed_model = client.embedding_model(\"local-embed-model\");\n    let embeddings = EmbeddingsBuilder::new(embed_model.clone()).build();\n    let store = InMemoryVectorStore::from_texts(&docs, &embeddings).await?;\n    // Query with a local model\n    let query = \"What color is the grass?\";\n    let results = store.search(embed_model.embed(query).await?, 1)?;\n    let context = results.first().map(|d| d.text.clone()).unwrap_or_default();\n    let answer = client.agent(\"llama2-chat\").build()\n        .prompt(format!(\"{}\\nQuestion: {}\", context, query)).await?;\n    println!(\"Answer: {}\", answer);\n    Ok(())\n}\n",
+    "category": "Retrieval",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-ollama (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Local Embeddings",
+        "In-Memory VectorStore"
+      ]
+    }
+  },
+  {
+    "instruction": "Summarize a PDF document by loading its text and using a RIG agent to generate a concise summary.",
+    "code": "use rig::{providers::openai, loaders::PdfLoader};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Load text from a PDF file\n    let pdf_text = PdfLoader::load(\"report.pdf\").unwrap_or_default();\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\").build();\n    let summary = agent.prompt(format!(\"Summarize this report:\\n{}\", pdf_text)).await?;\n    println!(\"Summary:\\n{}\", summary);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "PDF Loading",
+        "Text Summarization"
+      ]
+    }
+  },
+  {
+    "instruction": "Use Cohere's embedding model in RIG to index a list of words and find the most similar match to a query.",
+    "code": "use rig::providers::cohere;\nuse rig::embeddings::EmbeddingsBuilder;\nuse rig::vectorstores::InMemoryVectorStore;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let texts = [\"Apple\", \"Banana\", \"Cherry\"];\n    let client = cohere::Client::from_env();\n    let embed_model = client.embedding_model(\"embed-english-v2\");\n    let embeddings = EmbeddingsBuilder::new(embed_model.clone()).build();\n    let store = InMemoryVectorStore::from_texts(&texts, &embeddings).await?;\n    // Query the embeddings for \"Banana\"\n    let query = \"Banana\";\n    let results = store.search(embed_model.embed(query).await?, 1)?;\n    println!(\"Most similar to '{}': {:?}\", query, results.first().map(|d| &d.text));\n    Ok(())\n}\n",
+    "category": "Retrieval",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-cohere (integration)",
+        "tokio"
+      ],
+      "features": [
+        "Cohere Embeddings",
+        "Similarity Search"
+      ]
+    }
+  },
+  {
+    "instruction": "Transcribe an audio file to text using RIG and OpenAI's Whisper model for speech recognition.",
+    "code": "use rig::providers::openai;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let audio_file = \"audio.mp3\";\n    let client = openai::Client::from_env();\n    let whisper = client.transcription_model(openai::WHISPER_1);\n    let result = whisper.transcription_request().load_file(audio_file).send().await?;\n    println!(\"Transcribed text: {}\", result.text);\n    Ok(())\n}\n",
+    "category": "Audio",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Audio Transcription",
+        "OpenAI Whisper"
+      ]
+    }
+  },
+  {
+    "instruction": "Summarize a given text passage using RIG and an LLM, producing a brief one-sentence summary.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let text = \"Artificial intelligence (AI) is intelligence demonstrated by machines, unlike natural intelligence displayed by animals and humans.\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Summarize the input text in one sentence.\")\n        .build();\n    let summary = agent.prompt(text).await?;\n    println!(\"{}\", summary);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Text Summarization",
+        "Preamble Instruction"
+      ]
+    }
+  },
+  {
+    "instruction": "Translate a sentence from English to Spanish using RIG with an appropriate language model.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let sentence = \"Hello, how are you?\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Translate the input English sentence to Spanish.\")\n        .build();\n    let spanish = agent.prompt(sentence).await?;\n    println!(\"{}\", spanish);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Translation",
+        "Language Transformation"
+      ]
+    }
+  },
+  {
+    "instruction": "Generate a unit test for a given piece of code using RIG and GPT-4.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let code_snippet = \"fn add(x: i32, y: i32) -> i32 { x + y }\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\")\n        .preamble(\"Generate a Rust unit test for the following function.\")\n        .build();\n    let test_code = agent.prompt(code_snippet).await?;\n    println!(\"Generated test:\\n{}\", test_code);\n    Ok(())\n}\n",
+    "category": "BestPractice",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Code Generation",
+        "Automated Testing"
+      ]
+    }
+  },
+  {
+    "instruction": "Improve the documentation comment for a given Rust function using RIG and an LLM.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let code = \"/// Adds two numbers.\\nfn add(x: i32, y: i32) -> i32 { x + y }\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Improve the documentation comment for the following Rust function.\")\n        .build();\n    let improved_doc = agent.prompt(code).await?;\n    println!(\"Improved docs:\\n{}\", improved_doc);\n    Ok(())\n}\n",
+    "category": "BestPractice",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Documentation Generation",
+        "Code Analysis"
+      ]
+    }
+  },
+  {
+    "instruction": "Generate a template for a simple ERC-20 smart contract using RIG and an LLM.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let prompt_text = \"Generate a simple Ethereum ERC-20 smart contract in Solidity.\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\").build();\n    let contract_code = agent.prompt(prompt_text).await?;\n    println!(\"{}\", contract_code);\n    Ok(())\n}\n",
+    "category": "Contract",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Smart Contract Generation",
+        "Solidity Template"
+      ]
+    }
+  },
+  {
+    "instruction": "Analyze a smart contract for vulnerabilities using RIG by feeding the contract code to an LLM auditor agent.",
+    "code": "use rig::{completion::Prompt, providers::openai};\nuse std::fs;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Load smart contract code from a file\n    let solidity_code = fs::read_to_string(\"Contract.sol\").unwrap_or_default();\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\")\n        .preamble(\"You are a smart contract auditing assistant. Identify any vulnerabilities or issues.\")\n        .build();\n    let report = agent.prompt(solidity_code).await?;\n    println!(\"Audit Report:\\n{}\", report);\n    Ok(())\n}\n",
+    "category": "Contract",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Security Analysis",
+        "Smart Contract Auditing"
+      ]
+    }
+  },
+  {
+    "instruction": "Generate NFT metadata (name, description, attributes) from a given prompt using RIG and an LLM.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let description = \"A colorful pixel art dragon with sunglasses.\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"You are an NFT metadata generator. Provide a JSON with name, description, and attributes based on the prompt.\")\n        .build();\n    let metadata = agent.prompt(description).await?;\n    println!(\"{}\", metadata);\n    Ok(())\n}\n",
+    "category": "NFT",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Content Generation",
+        "JSON Output"
+      ]
+    }
+  },
+  {
+    "instruction": "Generate a basic ERC-721 NFT smart contract using RIG and GPT-4.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let prompt_text = \"Create a basic ERC-721 NFT smart contract in Solidity.\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\").build();\n    let contract_code = agent.prompt(prompt_text).await?;\n    println!(\"{}\", contract_code);\n    Ok(())\n}\n",
+    "category": "NFT",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Smart Contract Generation",
+        "NFT Contract Template"
+      ]
+    }
+  },
+  {
+    "instruction": "Summarize a DAO governance proposal using RIG and an LLM to produce a concise overview.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let proposal_text = \"Proposal: Increase staking rewards by 5% to incentivize participation. [Full proposal text]\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Summarize the following governance proposal in a few bullet points:\")\n        .build();\n    let summary = agent.prompt(proposal_text).await?;\n    println!(\"{}\", summary);\n    Ok(())\n}\n",
+    "category": "Governance",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Proposal Summarization",
+        "Governance"
+      ]
+    }
+  },
+  {
+    "instruction": "Analyze the sentiment and key points of a governance discussion using RIG with an LLM.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let discussion = \"User1: I think this proposal is great.\\nUser2: I'm concerned about the budget.\\n...\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-4\")\n        .preamble(\"Analyze the sentiments in the following governance discussion transcript.\")\n        .build();\n    let analysis = agent.prompt(discussion).await?;\n    println!(\"{}\", analysis);\n    Ok(())\n}\n",
+    "category": "Governance",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Discussion Analysis",
+        "Governance Insights"
+      ]
+    }
+  },
+  {
+    "instruction": "Generate an embedding vector for a given text using RIG with xAI's embedding model.",
+    "code": "use rig::providers::xai;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    // Use xAI's model for embedding\n    let client = xai::Client::from_env();\n    let embed_model = client.embedding_model(\"xai-embed-v1\");\n    let text = \"AI ethics and alignment.\";\n    let vector = embed_model.embed(text).await?;\n    println!(\"Embedding vector: {:?}\", vector);\n    Ok(())\n}\n",
+    "category": "Integration",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-xai (integration)",
+        "tokio"
+      ],
+      "features": [
+        "xAI Embeddings",
+        "Vector Representation"
+      ]
+    }
+  },
+  {
+    "instruction": "Create a fun RIG agent that tells programming jokes by completing setups with punchlines.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\nuse rand::seq::SliceRandom;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let jokes = [\n        \"Why did the programmer quit his job? Because he didn't get arrays.\",\n        \"How many programmers does it take to change a light bulb? None, that's a hardware problem.\"\n    ];\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"You tell programming jokes.\")\n        .build();\n    // Pick a random joke to prompt for variation\n    let joke_setup = jokes.choose(&mut rand::thread_rng()).unwrap();\n    let punchline = agent.prompt(joke_setup).await?;\n    println!(\"Joke: {} - {}\", joke_setup, punchline);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Random Prompt Selection",
+        "Humor Generation"
+      ]
+    }
+  },
+  {
+    "instruction": "Configure a RIG agent with a system-style preamble to always respond in a specified format (e.g., JSON).",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = openai::Client::from_env();\n    // Using system message style preamble for role-play\n    let assistant = client.agent(\"gpt-4\")\n        .preamble(\"You are a helpful assistant who always responds in JSON format.\")\n        .build();\n    let query = \"Give me three tips for learning Rust.\";\n    let json_answer = assistant.prompt(query).await?;\n    println!(\"{}\", json_answer);\n    Ok(())\n}\n",
+    "category": "BestPractice",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Response Formatting",
+        "System Prompt"
+      ]
+    }
+  },
+  {
+    "instruction": "Paraphrase a given sentence using RIG and an LLM, preserving the original meaning.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let text = \"The quick brown fox jumps over the lazy dog.\";\n    let client = openai::Client::from_env();\n    // Ask the model to rephrase the sentence\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Paraphrase the input text without changing its meaning.\")\n        .build();\n    let paraphrase = agent.prompt(text).await?;\n    println!(\"Original: {}\", text);\n    println!(\"Paraphrased: {}\", paraphrase);\n    Ok(())\n}\n",
+    "category": "Utility",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Paraphrasing",
+        "Language Transformation"
+      ]
+    }
+  },
+  {
+    "instruction": "Provide a structured outline for a given task using RIG, utilizing a few-shot example in the prompt for guidance.",
+    "code": "use rig::{Agent, completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let task = \"Create a to-do list app outline\";\n    let client = openai::Client::from_env();\n    // Few-shot prompt with examples (best practice)\n    let examples = \"User: Create a to-do list app outline\\nAssistant: 1. User Authentication\\n2. Task Creation ...\";\n    let agent = client.agent(\"gpt-4\")\n        .preamble(\"You are a software assistant that provides structured outlines.\")\n        .build();\n    let outline = agent.prompt(format!(\"{}\\nUser: {}\", examples, task)).await?;\n    println!(\"{}\", outline);\n    Ok(())\n}\n",
+    "category": "BestPractice",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Few-Shot Prompting",
+        "Structured Output"
+      ]
+    }
+  },
+  {
+    "instruction": "Solve a simple arithmetic word problem using RIG, instructing the model to show step-by-step reasoning in its answer.",
+    "code": "use rig::{completion::Prompt, providers::openai};\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let problem = \"If Alice has 5 apples and buys 7 more, how many apples does she have in total?\";\n    let client = openai::Client::from_env();\n    let agent = client.agent(\"gpt-3.5-turbo\")\n        .preamble(\"Solve the problem step by step, and then give the final answer.\")\n        .build();\n    let solution = agent.prompt(problem).await?;\n    println!(\"{}\", solution);\n    Ok(())\n}\n",
+    "category": "BestPractice",
+    "metadata": {
+      "language": "Rust",
+      "framework": "RIG",
+      "dependencies": [
+        "rig-core",
+        "tokio",
+        "OpenAI API"
+      ],
+      "features": [
+        "Chain-of-Thought",
+        "Step-by-Step Reasoning"
+      ]
+    }
+  }
+]

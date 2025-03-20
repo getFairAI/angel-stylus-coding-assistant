@@ -1,0 +1,4 @@
+chromadb==0.6.3
+langchain-community==0.2.16
+streamlit==1.41.1
+jq==1.8.0

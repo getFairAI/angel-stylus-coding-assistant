@@ -1,0 +1,27 @@
+{"question": "What is an ERC-20 token?", "answer": "Any contract that follows the ERC-20 standard."}
+{"question": "What functionalities do ERC-20 tokens provide?", "answer": "Transfer tokens and allow others to transfer tokens on behalf of the token holder."}
+{"question": "What is the purpose of the totalSupply function in ERC-20 interface?", "answer": "To return the total supply of tokens."}
+{"question": "What does the balanceOf function in ERC-20 interface do?", "answer": "Returns the balance of a specific account."}
+{"question": "What is the purpose of the transfer function in ERC-20 interface?", "answer": "To transfer tokens from one address to another."}
+{"question": "What does the allowance function in ERC-20 interface do?", "answer": "Returns the amount of tokens that an owner has allowed a spender to spend."}
+{"question": "What is the purpose of the approve function in ERC-20 interface?", "answer": "To allow a spender to spend a certain amount of tokens on behalf of the owner."}
+{"question": "What does the transferFrom function in ERC-20 interface do?", "answer": "To transfer tokens from one address to another, with the allowance of the token holder."}
+{"question": "Where can you find more information about the ERC-20 standard?", "answer": "At https://eips.ethereum.org/EIPS/eip-20"}{"question": "What programming language is the ERC-20 token contract written in?", "answer": "Rust"}
+{"question": "What is the purpose of the `Erc20Params` trait?", "answer": "To specify the name, symbol, and decimals of the token"}
+{"question": "What is the name of the type that provides all the standard ERC-20 methods?", "answer": "Erc20"}
+{"question": "What are the three main components of the `Erc20` struct?", "answer": "Balances, allowances, and total supply"}
+{"question": "What is the purpose of the `PhantomData` field in the `Erc20` struct?", "answer": "To allow the use of the `Erc20Params` trait"}
+{"question": "What are the two events declared in the code?", "answer": "Transfer and Approval"}
+{"question": "What are the two error types declared in the code?", "answer": "InsufficientBalance and InsufficientAllowance"}
+{"question": "What package is used for string operations in the code?", "answer": "alloc::string::String"}
+{"question": "What SDK is used for EVM-related functionality in the code?", "answer": "stylus_sdk"}
+{"question": "What is the purpose of the Transfer event in the provided Solidity code?", "answer": "The Transfer event is used to log the movement of funds between two accounts."}
+{"question": "What is the InsufficientBalance error used for?", "answer": "The InsufficientBalance error is used when the sender's balance is less than the value they want to transfer."}
+{"question": "What does the _transfer function do in the Erc20 implementation?", "answer": "The _transfer function moves funds between two accounts, updating the sender and receiver balances accordingly."}
+{"question": "How is the sender's balance updated during a transfer?", "answer": "The sender's balance is decreased by subtracting the transfer value from their current balance."}
+{"question": "What happens when the sender's balance is insufficient for a transfer?", "answer": "An InsufficientBalance error is returned, indicating that the transfer cannot be completed."}
+{"question": "What is the purpose of the Erc20Error enum?", "answer": "The Erc20Error enum represents the ways methods in the Erc20 implementation may fail, including insufficient balance and allowance errors."}
+{"question": "How is the receiver's balance updated during a transfer?", "answer": "The receiver's balance is increased by adding the transfer value to their current balance."}
+{"question": "What is the role of the evm::log function in the _transfer function?", "answer": "The evm::log function is used to emit the Transfer event, logging the transfer details on the Ethereum Virtual Machine."}
+{"question": "What is the relationship between the Erc20Error enum and the InsufficientBalance error?", "answer": "The Erc20Error enum contains the InsufficientBalance error as one of its variants, allowing it to be returned as an error during a transfer."}
+{"question": "Why are some methods in the Erc20 implementation marked as pub?", "answer": "Methods marked as pub are exposed and can be called from outside the erc20 module, such as from lib.rs."}

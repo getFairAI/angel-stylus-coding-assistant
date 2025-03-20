@@ -1,0 +1,6 @@
+__pycache__/
+.stylus-venv/
+.vector_data_code/
+.vector_data_docs/
+.synth-status-*
+.synth-status

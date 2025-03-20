@@ -1,0 +1,70 @@
+{"question": "What is an ERC-20 token?", "answer": "Any contract that follows the ERC-20 standard"}
+{"question": "What functionalities do ERC-20 tokens provide?", "answer": "Transfer tokens and allow others to transfer tokens on behalf of the token holder"}
+{"question": "What does the totalSupply function in ERC-20 return?", "answer": "The total supply of tokens as a uint256"}
+{"question": "What information does the balanceOf function in ERC-20 provide?", "answer": "The balance of a specific account as a uint256"}
+{"question": "What is the purpose of the transfer function in ERC-20?", "answer": "To transfer tokens from one address to another"}
+{"question": "What does the allowance function in ERC-20 return?", "answer": "The amount of tokens that an owner has allowed a spender to spend as a uint256"}
+{"question": "What is the purpose of the approve function in ERC-20?", "answer": "To allow a spender to transfer tokens on behalf of the token holder"}
+{"question": "What does the transferFrom function in ERC-20 do?", "answer": "Transfers tokens from one address to another with the allowance of the token holder"}
+{"question": "In what programming language is the ERC-20 interface example provided?", "answer": "Rust"}
+{"question": "Where can the official ERC-20 standard be found?", "answer": "https://eips.ethereum.org/EIPS/eip-20"}
+{"question": "What is the purpose of the Erc20Params trait in the ERC-20 token contract?", "answer": "The Erc20Params trait allows specifying the name, symbol, and decimals of the token."}
+{"question": "What is the function of the _transfer method in the Erc20 implementation?", "answer": "The _transfer method handles the movement of funds between two accounts."}
+{"question": "What happens when a user's balance is insufficient for a transfer?", "answer": "An InsufficientBalance error is returned with details about the user's current balance and the amount they want to transfer."}
+{"question": "How does the mint method increase the total supply of tokens?", "answer": "The mint method increases the total supply by adding the minted value to the existing total supply."}
+{"question": "What event is emitted when a transfer occurs?", "answer": "A Transfer event is emitted with details about the sender, recipient, and transferred amount."}
+{"question": "What is the purpose of the PhantomData type in the Erc20 struct?", "answer": "The PhantomData type is used to allow the Erc20Params trait to be implemented for the Erc20 struct."}
+{"question": "How are allowances handled in the Erc20 implementation?", "answer": "Allowances are stored in a mapping of users to a mapping of each spender's allowance, and can be updated using the _approve method (not shown)."}
+{"question": "What is the difference between the transfer and transfer_from methods?", "answer": "The transfer method is used for direct transfers, while the transfer_from method is used for transfers from one account to another with an intermediary spender."}
+{"question": "How does the Erc20 contract handle errors?", "answer": "The Erc20 contract uses a custom error type, Erc20Error, which can represent either an InsufficientBalance or InsufficientAllowance error."}
+{"question": "What is the role of the sol_storage macro in the Erc20 implementation?", "answer": "The sol_storage macro is used to define the storage layout for the Erc20 contract, including the balances and total supply."}
+{"question": "What is the purpose of the burn function in the Erc20 contract?", "answer": "The burn function decreases the balance of a specified address by a certain value and reduces the total supply of tokens."}
+{"question": "How does the transfer function work in the Erc20 contract?", "answer": "The transfer function transfers a specified value of tokens from the message sender to a specified address."}
+{"question": "What is the difference between the transfer and transfer_from functions?", "answer": "The transfer function transfers tokens from the message sender, while the transfer_from function transfers tokens from a specified address, which must have given the message sender allowance to spend those tokens."}
+{"question": "What happens when a user tries to burn more tokens than they have?", "answer": "If a user tries to burn more tokens than they have, the contract returns an InsufficientBalance error."}
+{"question": "How does the approve function work in the Erc20 contract?", "answer": "The approve function allows a specified spender to spend a certain value of tokens on behalf of the message sender."}
+{"question": "What is the purpose of the allowance function in the Erc20 contract?", "answer": "The allowance function returns the amount of tokens that a specified spender is allowed to spend on behalf of a specified owner."}
+{"question": "How does the total_supply function work in the Erc20 contract?", "answer": "The total_supply function returns the total supply of tokens in the contract."}
+{"question": "What is the purpose of the balance_of function in the Erc20 contract?", "answer": "The balance_of function returns the balance of a specified address in the contract."}
+{"question": "How does the name function work in the Erc20 contract?", "answer": "The name function returns the name of the token as defined in the contract parameters."}
+{"question": "What is the purpose of the symbol function in the Erc20 contract?", "answer": "The symbol function returns the symbol of the token as defined in the contract parameters."}
+{"question": "What is the name of the token defined in the StylusTokenParams struct?", "answer": "StylusToken"}
+{"question": "What is the symbol of the token defined in the StylusTokenParams struct?", "answer": "STK"}
+{"question": "How many decimal places does the StylusToken have?", "answer": "18"}
+{"question": "What is the purpose of the sol_storage macro in the code?", "answer": "To generate Rust-equivalent structs with all fields mapped to Solidity-equivalent storage slots and types."}
+{"question": "What is the function of the mint method in the StylusToken implementation?", "answer": "Mints tokens"}
+{"question": "What is the function of the mint_to method in the StylusToken implementation?", "answer": "Mints tokens to another address"}
+{"question": "What is the function of the burn method in the StylusToken implementation?", "answer": "Burns tokens"}
+{"question": "What is the type of the value parameter in the mint, mint_to, and burn methods?", "answer": "U256"}
+{"question": "What is the purpose of the Erc20Params trait in the code?", "answer": "To define immutable parameters for an ERC20 token"}
+{"question": "What is the relationship between the StylusToken struct and the Erc20 struct?", "answer": "StylusToken contains an instance of Erc20"}
+{"question": "What is an ERC-721 token?", "answer": "Any contract that follows the ERC-721 standard is an ERC-721 token."}
+{"question": "What events are emitted by the ERC721 interface?", "answer": "The events emitted are Transfer, Approval, and ApprovalForAll."}
+{"question": "What function returns the balance of a specific owner?", "answer": "balanceOf(address _owner)"}
+{"question": "What function returns the owner of a specific token ID?", "answer": "ownerOf(uint256 _tokenId)"}
+{"question": "How can you safely transfer a token from one address to another?", "answer": "Using the safeTransferFrom function"}
+{"question": "What is the purpose of the approve function?", "answer": "To set an approved address for a specific token ID"}
+{"question": "What does the setApprovalForAll function do?", "answer": "Sets approval for all tokens for a specific operator"}
+{"question": "How can you get the approved address for a specific token ID?", "answer": "Using the getApproved function"}
+{"question": "Is there a way to check if an owner has approved an operator for all tokens?", "answer": "Yes, using the isApprovedForAll function"}
+{"question": "What programming language is used in the example code?", "answer": "Rust"}
+{"question": "What is the purpose of the Erc721Params trait in the given code?", "answer": "The Erc721Params trait allows specifying the name, symbol, and token uri for the Erc721 contract."}
+{"question": "What is the function of the owners mapping in the Erc721 struct?", "answer": "The owners mapping maps a token id to its owner's address."}
+{"question": "What event is emitted when a token is transferred from one address to another?", "answer": "The Transfer event is emitted when a token is transferred."}
+{"question": "What error is thrown when attempting to transfer a token to the Zero address?", "answer": "The TransferToZero error is thrown when attempting to transfer a token to the Zero address."}
+{"question": "What is the purpose of the IERC721TokenReceiver interface?", "answer": "The IERC721TokenReceiver interface allows calls to the onERC721Received method of other contracts implementing IERC721TokenReceiver."}
+{"question": "What is the selector for the onERC721Received function?", "answer": "The selector for the onERC721Received function is 0x150b7a02."}
+{"question": "What is the Erc721Error enum used for?", "answer": "The Erc721Error enum represents the ways methods may fail in the Erc721 contract."}
+{"question": "What is the function of the token_approvals mapping in the Erc721 struct?", "answer": "The token_approvals mapping maps a token id to the address that has been approved to manage it."}
+{"question": "What is the purpose of the balances mapping in the Erc721 struct?", "answer": "The balances mapping maps an address to its token balance."}
+{"question": "What is the function of the operator_approvals mapping in the Erc721 struct?", "answer": "The operator_approvals mapping maps an address to a mapping of operators that have been approved to manage its tokens."}
+{"question": "What is the purpose of the ERC721_TOKEN_RECEIVER_ID constant?", "answer": "The ERC721_TOKEN_RECEIVER_ID constant is used as a selector for the onERC721Received function, which is returned by contracts implementing IERC721TokenReceiver."}
+{"question": "What does the require_authorized_to_spend function check?", "answer": "The require_authorized_to_spend function checks if the msg::sender() is authorized to spend a given token, ensuring they are either the owner or an approved operator."}
+{"question": "What happens when the caller is not the owner of the token in the require_authorized_to_spend function?", "answer": "If the caller is not the owner, the function checks if the caller is an operator for the owner or if they are approved to manage the specific token_id."}
+{"question": "What is the purpose of the transfer function?", "answer": "The transfer function transfers a token from one address to another, updating the ownership and balances accordingly."}
+{"question": "Does the transfer function check if the recipient address is not the zero address?", "answer": "No, the transfer function does not check if the recipient address is not the zero address, as it can be used for burning tokens."}
+{"question": "What happens to the approved mapping for a token after it is transferred?", "answer": "The approved mapping for the token is cleaned up after it is transferred."}
+{"question": "What does the call_receiver function do?", "answer": "The call_receiver function calls the onERC721Received function on the recipient address if it is a contract, passing in the necessary parameters."}
+{"question": "What error is returned if the recipient contract refuses the token transfer?", "answer": "If the recipient contract refuses the token transfer, an Erc721Error::ReceiverRefused error is returned."}
+{"question": "How does the call_receiver function handle non-contract recipient addresses?", "answer": "If the recipient address is not a contract, the call_receiver function does nothing."}
+{"question": "What is the purpose of the evm::log function in the transfer function?", "answer": "The evm::log function is used to log the token transfer event, including the from, to, and token_id parameters."}

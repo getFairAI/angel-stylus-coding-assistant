@@ -1,0 +1,1149 @@
+,Instruction,Title,Response
+0," Create an ERC20 token with basic mint functionality  
+","ERC20 Token Creation
+","
+
+
+pub struct TokenParams; 
+impl Erc20Params for TokenParams { 
+    const NAME: &'static str = ""MyToken""; 
+    const SYMBOL: &'static str = ""MTK""; 
+    const DECIMALS: u8 = 18; 
+} 
+
+sol_storage! { 
+    #[entrypoint] 
+    pub struct Token { 
+        #[borrow] 
+        Erc20<TokenParams> erc20; 
+    } 
+} 
+
+#[public] 
+#[inherit(Erc20<TokenParams>)] 
+impl Token { 
+    pub fn mint(&mut self, value: U256) -> Result<(), Erc20Error> { 
+        self.erc20.mint(msg::sender(), value)?; 
+        Ok(()) 
+    } 
+}
+
+"
+1," Create an ERC721 NFT with basic mint and burn functionality  
+","ERC721 NFT Creation
+","
+
+pub struct NFTParams; 
+impl Erc721Params for NFTParams { 
+    const NAME: &'static str = ""MyNFT""; 
+    const SYMBOL: &'static str = ""MNFT""; 
+    fn token_uri(token_id: U256) -> String { 
+        format!(""https://api.mynft.com/{}"", token_id) 
+    } 
+} 
+
+sol_storage! { 
+    #[entrypoint] 
+    pub struct NFT { 
+        #[borrow] 
+        Erc721<NFTParams> erc721; 
+    } 
+} 
+
+#[public] 
+#[inherit(Erc721<NFTParams>)] 
+impl NFT { 
+    pub fn mint(&mut self) -> Result<(), Erc721Error> { 
+        self.erc721.mint(msg::sender())?; 
+        Ok(()) 
+    } 
+    
+    pub fn burn(&mut self, token_id: U256) -> Result<(), Erc721Error> { 
+        self.erc721.burn(msg::sender(), token_id)?; 
+        Ok(()) 
+    } 
+}
+
+"
+2," Implement a basic token transfer function  
+","Token Transfer Implementation
+","
+
+pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Error> { 
+    let sender = msg::sender(); 
+    let sender_balance = self.balances.get(sender); 
+    
+    if sender_balance < amount { 
+        return Err(Error::InsufficientBalance); 
+    } 
+    
+    self.balances.setter(sender).set(sender_balance - amount); 
+    let receiver_balance = self.balances.get(to); 
+    self.balances.setter(to).set(receiver_balance + amount); 
+    
+    evm::log(Transfer { from: sender, to, value: amount }); 
+    Ok(true) 
+}
+
+"
+3," Create a basic approval mechanism for token spending  
+","Token Approval Mechanism
+","
+
+pub fn approve(&mut self, spender: Address, amount: U256) -> Result<bool, Error> { 
+    let owner = msg::sender(); 
+    self.allowances.setter(owner).insert(spender, amount); 
+    evm::log(Approval { owner, spender, amount }); 
+    Ok(true) 
+}
+
+"
+4," Implement token burning functionality  
+","Token Burning
+","
+
+pub fn burn(&mut self, amount: U256) -> Result<(), Error> { 
+    let burner = msg::sender(); 
+    let balance = self.balances.get(burner); 
+    
+    if balance < amount { 
+        return Err(Error::InsufficientBalance); 
+    } 
+    
+    self.balances.setter(burner).set(balance - amount); 
+    self.total_supply.set(self.total_supply.get() - amount); 
+    
+    evm::log(Transfer { 
+        from: burner, 
+        to: Address::ZERO, 
+        value: amount 
+    }); 
+    Ok(()) 
+}
+
+"
+5," Create a basic token minting function  
+","Token Minting
+","
+
+pub fn mint(&mut self, to: Address, amount: U256) -> Result<(), Error> { 
+    let new_supply = self.total_supply.get() + amount; 
+    self.total_supply.set(new_supply); 
+    
+    let balance = self.balances.get(to); 
+    self.balances.setter(to).set(balance + amount); 
+    
+    evm::log(Transfer { 
+        from: Address::ZERO, 
+        to, 
+        value: amount 
+    }); 
+    Ok(()) 
+}
+
+"
+6," Implement NFT ownership transfer  
+","NFT Transfer
+","
+
+pub fn transfer(&mut self, from: Address, to: Address, token_id: U256) -> Result<(), Error> { 
+    if !self.exists(token_id) { 
+        return Err(Error::TokenNotFound); 
+    } 
+    
+    if self.owner_of(token_id)? != from { 
+        return Err(Error::NotOwner); 
+    } 
+    
+    self.owners.setter(token_id).set(to); 
+    self.balances.setter(from).set(self.balances.get(from) - 1); 
+    self.balances.setter(to).set(self.balances.get(to) + 1); 
+    
+    evm::log(Transfer { from, to, token_id }); 
+    Ok(()) 
+}
+
+"
+7," Create a basic NFT minting function  
+","NFT Minting
+","
+
+pub fn mint(&mut self, to: Address) -> Result<(), Error> { 
+    let token_id = self.next_token_id.get(); 
+    
+    self.owners.setter(token_id).set(to); 
+    self.balances.setter(to).set(self.balances.get(to) + 1); 
+    self.next_token_id.set(token_id + 1); 
+    
+    evm::log(Transfer { 
+        from: Address::ZERO, 
+        to, 
+        token_id 
+    }); 
+    Ok(()) 
+}
+
+"
+8," Implement NFT approval mechanism  
+","NFT Approval
+","
+
+pub fn approve(&mut self, to: Address, token_id: U256) -> Result<(), Error> { 
+    let owner = self.owner_of(token_id)?; 
+    
+    if msg::sender() != owner { 
+        return Err(Error::NotOwner); 
+    } 
+    
+    self.token_approvals.setter(token_id).set(to); 
+    evm::log(Approval { owner, approved: to, token_id }); 
+    Ok(()) 
+}
+
+"
+9," Create a basic token balance check function  
+","Balance Check
+","
+
+pub fn balance_of(&self, account: Address) -> U256 { 
+    self.balances.get(account) 
+}
+
+"
+10," Implement a basic DAO voting mechanism  
+","DAO Voting System
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct DAOVoting {
+        mapping(uint256 => Proposal) proposals;
+        mapping(address => mapping(uint256 => bool)) has_voted;
+        uint256 proposal_count;
+        #[borrow]
+        Erc20<TokenParams> governance_token;
+    }
+}
+
+#[public]
+impl DAOVoting {
+    pub fn create_proposal(&mut self, description: String) -> Result<(), Error> {
+        let proposal_id = self.proposal_count.get();
+        let proposal = Proposal {
+            id: proposal_id,
+            creator: msg::sender(),
+            description,
+            yes_votes: U256::ZERO,
+            no_votes: U256::ZERO,
+            end_time: evm::block_timestamp() + U256::from(7 * 24 * 60 * 60), // 1 week
+            executed: false
+        };
+        
+        self.proposals.setter(proposal_id).set(proposal);
+        self.proposal_count.set(proposal_id + U256::ONE);
+        Ok(())
+    }
+
+    pub fn vote(&mut self, proposal_id: U256, support: bool) -> Result<(), Error> {
+        let voter = msg::sender();
+        let voting_power = self.governance_token.balance_of(voter);
+        
+        if self.has_voted.getter(voter).get(proposal_id) {
+            return Err(Error::AlreadyVoted);
+        }
+        
+        let mut proposal = self.proposals.getter(proposal_id).get();
+        if support {
+            proposal.yes_votes += voting_power;
+        } else {
+            proposal.no_votes += voting_power;
+        }
+        
+        self.has_voted.setter(voter).insert(proposal_id, true);
+        Ok(())
+    }
+}
+
+"
+11," Create a multi-signature wallet implementation  
+","Multi-Signature Wallet
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MultiSigWallet {
+        mapping(address => bool) owners;
+        mapping(uint256 => Transaction) transactions;
+        mapping(uint256 => mapping(address => bool)) confirmations;
+        uint256 required_confirmations;
+        uint256 transaction_count;
+    }
+}
+
+#[public]
+impl MultiSigWallet {
+    pub fn submit_transaction(&mut self, to: Address, value: U256, data: Vec<u8>) -> Result<(), Error> {
+        let tx_id = self.transaction_count.get();
+        let transaction = Transaction {
+            to,
+            value,
+            data,
+            executed: false
+        };
+        
+        self.transactions.setter(tx_id).set(transaction);
+        self.transaction_count.set(tx_id + U256::ONE);
+        Ok(())
+    }
+
+    pub fn confirm_transaction(&mut self, tx_id: U256) -> Result<(), Error> {
+        if !self.owners.get(msg::sender()) {
+            return Err(Error::NotOwner);
+        }
+        
+        self.confirmations.setter(tx_id).insert(msg::sender(), true);
+        
+        if self.get_confirmation_count(tx_id) >= self.required_confirmations.get() {
+            self.execute_transaction(tx_id)?;
+        }
+        Ok(())
+    }
+}
+
+"
+12," Implement a basic liquidity pool with swapping  
+","Liquidity Pool
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct LiquidityPool {
+        #[borrow]
+        Erc20<TokenParamsA> token_a;
+        #[borrow]
+        Erc20<TokenParamsB> token_b;
+        uint256 reserve_a;
+        uint256 reserve_b;
+        mapping(address => uint256) lp_balances;
+        uint256 total_lp_supply;
+    }
+}
+
+#[public]
+impl LiquidityPool {
+    pub fn add_liquidity(&mut self, amount_a: U256, amount_b: U256) -> Result<(), Error> {
+        self.token_a.transfer_from(msg::sender(), Address::from(self), amount_a)?;
+        self.token_b.transfer_from(msg::sender(), Address::from(self), amount_b)?;
+        
+        let lp_tokens = if self.total_lp_supply.get().is_zero() {
+            (amount_a * amount_b).sqrt()
+        } else {
+            min(
+                amount_a * self.total_lp_supply.get() / self.reserve_a.get(),
+                amount_b * self.total_lp_supply.get() / self.reserve_b.get()
+            )
+        };
+        
+        self.lp_balances.setter(msg::sender()).set(
+            self.lp_balances.get(msg::sender()) + lp_tokens
+        );
+        self.total_lp_supply.set(self.total_lp_supply.get() + lp_tokens);
+        Ok(())
+    }
+
+    pub fn swap(&mut self, amount_in: U256, token_a_to_b: bool) -> Result<(), Error> {
+        let (reserve_in, reserve_out) = if token_a_to_b {
+            (self.reserve_a.get(), self.reserve_b.get())
+        } else {
+            (self.reserve_b.get(), self.reserve_a.get())
+        };
+        
+        let amount_out = amount_in * reserve_out / (reserve_in + amount_in);
+        
+        if token_a_to_b {
+            self.token_a.transfer_from(msg::sender(), Address::from(self), amount_in)?;
+            self.token_b.transfer(msg::sender(), amount_out)?;
+        } else {
+            self.token_b.transfer_from(msg::sender(), Address::from(self), amount_in)?;
+            self.token_a.transfer(msg::sender(), amount_out)?;
+        }
+        Ok(())
+    }
+}
+
+"
+13," Create an NFT auction system  
+","Auction System
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct NFTAuction {
+        mapping(uint256 => Auction) auctions;
+        #[borrow]
+        Erc721<NFTParams> nft;
+    }
+}
+
+#[public]
+impl NFTAuction {
+    pub fn create_auction(&mut self, token_id: U256, min_bid: U256, duration: U256) -> Result<(), Error> {
+        if self.nft.owner_of(token_id)? != msg::sender() {
+            return Err(Error::NotOwner);
+        }
+        
+        let auction = Auction {
+            seller: msg::sender(),
+            token_id,
+            min_bid,
+            highest_bid: U256::ZERO,
+            highest_bidder: Address::ZERO,
+            end_time: evm::block_timestamp() + duration,
+            ended: false
+        };
+        
+        self.nft.transfer_from(msg::sender(), Address::from(self), token_id)?;
+        self.auctions.setter(token_id).set(auction);
+        Ok(())
+    }
+
+    pub fn place_bid(&mut self, token_id: U256) -> Result<(), Error> {
+        let mut auction = self.auctions.getter(token_id).get();
+        
+        if msg::value() <= auction.highest_bid || msg::value() < auction.min_bid {
+            return Err(Error::BidTooLow);
+        }
+        
+        if evm::block_timestamp() > auction.end_time {
+            return Err(Error::AuctionEnded);
+        }
+        
+        if !auction.highest_bidder.is_zero() {
+            // Refund previous bidder
+            self.send_value(auction.highest_bidder, auction.highest_bid)?;
+        }
+        
+        auction.highest_bid = msg::value();
+        auction.highest_bidder = msg::sender();
+        self.auctions.setter(token_id).set(auction);
+        Ok(())
+    }
+}
+
+"
+14," Implement a staking system with time lock and rewards  
+","Token Staking with Time Lock
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct TimeLockStaking {
+        mapping(address => StakeInfo) stakes;
+        uint256 reward_rate;
+        uint256 lock_duration;
+        #[borrow]
+        Erc20<TokenParams> staking_token;
+        #[borrow]
+        Erc20<RewardParams> reward_token;
+    }
+}
+
+#[public]
+impl TimeLockStaking {
+    pub fn stake(&mut self, amount: U256) -> Result<(), Error> {
+        let staker = msg::sender();
+        let stake_info = StakeInfo {
+            amount,
+            start_time: evm::block_timestamp(),
+            last_claim_time: evm::block_timestamp(),
+            unlocked: false
+        };
+        
+        self.staking_token.transfer_from(staker, Address::from(self), amount)?;
+        self.stakes.setter(staker).set(stake_info);
+        Ok(())
+    }
+
+    pub fn claim_rewards(&mut self) -> Result<(), Error> {
+        let staker = msg::sender();
+        let stake_info = self.stakes.getter(staker).get();
+        
+        let time_staked = evm::block_timestamp() - stake_info.last_claim_time;
+        let rewards = stake_info.amount * time_staked * self.reward_rate;
+        
+        self.reward_token.mint(staker, rewards)?;
+        stake_info.last_claim_time = evm::block_timestamp();
+        Ok(())
+    }
+}
+
+"
+15," Create a basic flash loan mechanism  
+","Flash Loan Implementation
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct FlashLoan {
+        #[borrow]
+        Erc20<TokenParams> token;
+        uint256 fee_percentage;
+    }
+}
+
+#[public]
+impl FlashLoan {
+    pub fn execute_flash_loan(&mut self, amount: U256, callback_data: Vec<u8>) -> Result<(), Error> {
+        let initial_balance = self.token.balance_of(Address::from(self));
+        if amount > initial_balance {
+            return Err(Error::InsufficientLiquidity);
+        }
+        
+        // Transfer tokens to borrower
+        self.token.transfer(msg::sender(), amount)?;
+        
+        // Execute borrower's callback function
+        self.call_borrower_callback(msg::sender(), callback_data)?;
+        
+        // Verify loan repayment with fees
+        let fee = amount * self.fee_percentage / U256::from(10000);
+        let expected_balance = initial_balance + fee;
+        let final_balance = self.token.balance_of(Address::from(self));
+        
+        if final_balance < expected_balance {
+            return Err(Error::RepaymentFailed);
+        }
+        Ok(())
+    }
+}
+
+"
+16," Implement a basic cross-chain token bridge  
+","Token Bridge
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct TokenBridge {
+        mapping(bytes32 => bool) processed_transfers;
+        mapping(address => bool) validators;
+        uint256 required_signatures;
+        #[borrow]
+        Erc20<TokenParams> token;
+    }
+}
+
+#[public]
+impl TokenBridge {
+    pub fn lock_tokens(&mut self, amount: U256, destination_chain: String) -> Result<(), Error> {
+        self.token.transfer_from(msg::sender(), Address::from(self), amount)?;
+        
+        evm::log(TokensLocked {
+            from: msg::sender(),
+            amount,
+            destination_chain,
+            nonce: self.get_next_nonce()
+        });
+        Ok(())
+    }
+
+    pub fn unlock_tokens(&mut self, to: Address, amount: U256, transfer_id: B256, signatures: Vec<Signature>) -> Result<(), Error> {
+        if self.processed_transfers.get(transfer_id) {
+            return Err(Error::AlreadyProcessed);
+        }
+        
+        self.verify_signatures(transfer_id, signatures)?;
+        self.token.transfer(to, amount)?;
+        self.processed_transfers.setter(transfer_id).set(true);
+        Ok(())
+    }
+}
+
+"
+17," Create a yield farming contract with multiple reward tokens  
+","Yield Farming
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct YieldFarm {
+        mapping(address => UserInfo) user_info;
+        mapping(uint256 => RewardToken) reward_tokens;
+        uint256 reward_token_count;
+        #[borrow]
+        Erc20<StakingTokenParams> staking_token;
+    }
+}
+
+#[public]
+impl YieldFarm {
+    pub fn stake(&mut self, amount: U256) -> Result<(), Error> {
+        let user = msg::sender();
+        self.update_rewards(user)?;
+        
+        self.staking_token.transfer_from(user, Address::from(self), amount)?;
+        self.user_info.setter(user).update_stake(amount);
+        Ok(())
+    }
+
+    pub fn claim_rewards(&mut self) -> Result<(), Error> {
+        let user = msg::sender();
+        self.update_rewards(user)?;
+        
+        for i in 0..self.reward_token_count.get() {
+            let reward_amount = self.calculate_rewards(user, i)?;
+            if !reward_amount.is_zero() {
+                self.reward_tokens.getter(i).get().token.mint(user, reward_amount)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+"
+18," Implement NFT fractionalization  
+","NFT Fractional Ownership
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct NFTFractionalization {
+        mapping(uint256 => Vault) vaults;
+        uint256 vault_count;
+        #[borrow]
+        Erc721<NFTParams> nft;
+        #[borrow]
+        Erc20Factory token_factory;
+    }
+}
+
+#[public]
+impl NFTFractionalization {
+    pub fn fractionalize(&mut self, token_id: U256, fraction_count: U256) -> Result<(), Error> {
+        self.nft.transfer_from(msg::sender(), Address::from(self), token_id)?;
+        
+        let vault = Vault {
+            token_id,
+            fraction_token: self.token_factory.create_token(
+                format!(""Fraction {}"", token_id),
+                format!(""FRAC-{}"", token_id),
+                fraction_count
+            )?,
+            owner: msg::sender(),
+            locked: true
+        };
+        
+        let vault_id = self.vault_count.get();
+        self.vaults.setter(vault_id).set(vault);
+        self.vault_count.set(vault_id + U256::ONE);
+        Ok(())
+    }
+
+    pub fn redeem(&mut self, vault_id: U256) -> Result<(), Error> {
+        let vault = self.vaults.getter(vault_id).get();
+        let total_supply = vault.fraction_token.total_supply();
+        
+        vault.fraction_token.burn_from(msg::sender(), total_supply)?;
+        self.nft.transfer(msg::sender(), vault.token_id)?;
+        vault.locked = false;
+        Ok(())
+    }
+}
+
+"
+19," Create an automated market maker with constant product formula  
+","Automated Market Maker (AMM)
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct AMM {
+        #[borrow]
+        Erc20<TokenParamsX> token_x;
+        #[borrow]
+        Erc20<TokenParamsY> token_y;
+        uint256 reserve_x;
+        uint256 reserve_y;
+        uint256 k_constant;
+        uint256 fee_percentage;
+    }
+}
+
+#[public]
+impl AMM {
+    pub fn add_liquidity(&mut self, amount_x: U256, amount_y: U256) -> Result<(), Error> {
+        self.token_x.transfer_from(msg::sender(), Address::from(self), amount_x)?;
+        self.token_y.transfer_from(msg::sender(), Address::from(self), amount_y)?;
+        
+        self.reserve_x.set(self.reserve_x.get() + amount_x);
+        self.reserve_y.set(self.reserve_y.get() + amount_y);
+        self.k_constant.set(self.reserve_x.get() * self.reserve_y.get());
+        Ok(())
+    }
+
+    pub fn swap_x_for_y(&mut self, amount_in: U256) -> Result<U256, Error> {
+        let fee = amount_in * self.fee_percentage / U256::from(10000);
+        let amount_in_with_fee = amount_in - fee;
+        let reserve_x = self.reserve_x.get();
+        let reserve_y = self.reserve_y.get();
+        
+        let amount_out = (reserve_y * amount_in_with_fee) / (reserve_x + amount_in_with_fee);
+        
+        self.token_x.transfer_from(msg::sender(), Address::from(self), amount_in)?;
+        self.token_y.transfer(msg::sender(), amount_out)?;
+        
+        self.reserve_x.set(reserve_x + amount_in);
+        self.reserve_y.set(reserve_y - amount_out);
+        Ok(amount_out)
+    }
+}
+
+"
+20," Implement a basic insurance protocol for token coverage  
+","Insurance Protocol
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct InsuranceProtocol {
+        mapping(address => Policy) policies;
+        mapping(uint256 => Claim) claims;
+        uint256 claim_count;
+        uint256 premium_rate;
+        #[borrow]
+        Erc20<TokenParams> coverage_token;
+    }
+}
+
+#[public]
+impl InsuranceProtocol {
+    pub fn purchase_policy(&mut self, coverage_amount: U256, duration: U256) -> Result<(), Error> {
+        let premium = coverage_amount * self.premium_rate * duration / U256::from(365 days);
+        
+        self.coverage_token.transfer_from(msg::sender(), Address::from(self), premium)?;
+        
+        let policy = Policy {
+            holder: msg::sender(),
+            coverage_amount,
+            start_time: evm::block_timestamp(),
+            end_time: evm::block_timestamp() + duration,
+            active: true
+        };
+        
+        self.policies.setter(msg::sender()).set(policy);
+        Ok(())
+    }
+
+    pub fn file_claim(&mut self, amount: U256, evidence: String) -> Result<(), Error> {
+        let policy = self.policies.getter(msg::sender()).get();
+        if !policy.active || evm::block_timestamp() > policy.end_time {
+            return Err(Error::PolicyInactive);
+        }
+        
+        let claim_id = self.claim_count.get();
+        let claim = Claim {
+            id: claim_id,
+            policy_holder: msg::sender(),
+            amount,
+            evidence,
+            status: ClaimStatus::Pending
+        };
+        
+        self.claims.setter(claim_id).set(claim);
+        self.claim_count.set(claim_id + U256::ONE);
+        Ok(())
+    }
+}
+
+"
+21," Create a basic lending protocol with interest rates  
+","Lending Protocol
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct LendingProtocol {
+        mapping(address => Position) lending_positions;
+        mapping(address => Position) borrowing_positions;
+        uint256 total_deposits;
+        uint256 total_borrows;
+        uint256 interest_rate;
+        #[borrow]
+        Erc20<TokenParams> token;
+    }
+}
+
+#[public]
+impl LendingProtocol {
+    pub fn deposit(&mut self, amount: U256) -> Result<(), Error> {
+        self.token.transfer_from(msg::sender(), Address::from(self), amount)?;
+        
+        let mut position = self.lending_positions.getter(msg::sender()).get();
+        position.principal += amount;
+        position.last_update = evm::block_timestamp();
+        
+        self.lending_positions.setter(msg::sender()).set(position);
+        self.total_deposits.set(self.total_deposits.get() + amount);
+        Ok(())
+    }
+
+    pub fn borrow(&mut self, amount: U256) -> Result<(), Error> {
+        let collateral = self.lending_positions.getter(msg::sender()).get().principal;
+        if amount > collateral * U256::from(75) / U256::from(100) {
+            return Err(Error::InsufficientCollateral);
+        }
+        
+        let mut position = self.borrowing_positions.getter(msg::sender()).get();
+        position.principal += amount;
+        position.last_update = evm::block_timestamp();
+        
+        self.token.transfer(msg::sender(), amount)?;
+        self.borrowing_positions.setter(msg::sender()).set(position);
+        self.total_borrows.set(self.total_borrows.get() + amount);
+        Ok(())
+    }
+}
+
+"
+22," Implement a basic prediction market for binary outcomes  
+","Prediction Market
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct PredictionMarket {
+        mapping(uint256 => Market) markets;
+        uint256 market_count;
+        #[borrow]
+        Erc20<TokenParams> settlement_token;
+    }
+}
+
+#[public]
+impl PredictionMarket {
+    pub fn create_market(&mut self, description: String, resolution_time: U256) -> Result<(), Error> {
+        let market_id = self.market_count.get();
+        let market = Market {
+            id: market_id,
+            description,
+            resolution_time,
+            yes_pool: U256::ZERO,
+            no_pool: U256::ZERO,
+            resolved: false,
+            outcome: false
+        };
+        
+        self.markets.setter(market_id).set(market);
+        self.market_count.set(market_id + U256::ONE);
+        Ok(())
+    }
+
+    pub fn bet_yes(&mut self, market_id: U256, amount: U256) -> Result<(), Error> {
+        let mut market = self.markets.getter(market_id).get();
+        if evm::block_timestamp() >= market.resolution_time {
+            return Err(Error::MarketClosed);
+        }
+        
+        self.settlement_token.transfer_from(msg::sender(), Address::from(self), amount)?;
+        market.yes_pool += amount;
+        self.markets.setter(market_id).set(market);
+        Ok(())
+    }
+}
+
+"
+23," Create a synthetic asset protocol with collateralization  
+","Synthetic Assets
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct SyntheticProtocol {
+        mapping(address => Position) positions;
+        uint256 collateral_ratio;
+        uint256 liquidation_threshold;
+        #[borrow]
+        Erc20<CollateralParams> collateral_token;
+        #[borrow]
+        Erc20<SyntheticParams> synthetic_token;
+        Oracle price_feed;
+    }
+}
+
+#[public]
+impl SyntheticProtocol {
+    pub fn create_synthetic(&mut self, collateral_amount: U256, synthetic_amount: U256) -> Result<(), Error> {
+        let price = self.price_feed.get_price()?;
+        let required_collateral = synthetic_amount * price * self.collateral_ratio / U256::from(100);
+        
+        if collateral_amount < required_collateral {
+            return Err(Error::InsufficientCollateral);
+        }
+        
+        self.collateral_token.transfer_from(msg::sender(), Address::from(self), collateral_amount)?;
+        self.synthetic_token.mint(msg::sender(), synthetic_amount)?;
+        
+        let position = Position {
+            collateral: collateral_amount,
+            debt: synthetic_amount,
+            last_update: evm::block_timestamp()
+        };
+        
+        self.positions.setter(msg::sender()).set(position);
+        Ok(())
+    }
+
+    pub fn liquidate(&mut self, account: Address) -> Result<(), Error> {
+        let position = self.positions.getter(account).get();
+        let price = self.price_feed.get_price()?;
+        let current_ratio = position.collateral * U256::from(100) / (position.debt * price);
+        
+        if current_ratio > self.liquidation_threshold {
+            return Err(Error::PositionHealthy);
+        }
+        
+        // Liquidation logic
+        self.synthetic_token.burn(msg::sender(), position.debt)?;
+        self.collateral_token.transfer(msg::sender(), position.collateral)?;
+        self.positions.delete(account);
+        Ok(())
+    }
+}
+
+"
+24," Implement a basic options trading protocol  
+","Options Protocol
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct OptionsProtocol {
+        mapping(uint256 => Option) options;
+        uint256 option_count;
+        #[borrow]
+        Erc20<TokenParams> underlying_token;
+        #[borrow]
+        Erc20<TokenParams> payment_token;
+        Oracle price_feed;
+    }
+}
+
+#[public]
+impl OptionsProtocol {
+    pub fn create_call_option(&mut self, strike_price: U256, expiry: U256, amount: U256) -> Result<(), Error> {
+        if expiry <= evm::block_timestamp() {
+            return Err(Error::InvalidExpiry);
+        }
+        
+        self.underlying_token.transfer_from(msg::sender(), Address::from(self), amount)?;
+        
+        let option = Option {
+            id: self.option_count.get(),
+            creator: msg::sender(),
+            option_type: OptionType::Call,
+            strike_price,
+            expiry,
+            amount,
+            exercised: false
+        };
+        
+        self.options.setter(self.option_count.get()).set(option);
+        self.option_count.set(self.option_count.get() + U256::ONE);
+        Ok(())
+    }
+
+    pub fn exercise_option(&mut self, option_id: U256) -> Result<(), Error> {
+        let option = self.options.getter(option_id).get();
+        if evm::block_timestamp() > option.expiry {
+            return Err(Error::OptionExpired);
+        }
+        
+        let payment = option.strike_price * option.amount;
+        self.payment_token.transfer_from(msg::sender(), option.creator, payment)?;
+        self.underlying_token.transfer(msg::sender(), option.amount)?;
+        
+        option.exercised = true;
+        self.options.setter(option_id).set(option);
+        Ok(())
+    }
+}
+"
+25," Implement a basic perpetual futures trading protocol  
+","Perpetual Futures
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct PerpetualProtocol {
+        mapping(address => Position) positions;
+        uint256 maintenance_margin;
+        uint256 initial_margin;
+        #[borrow]
+        Erc20<TokenParams> collateral_token;
+        Oracle price_feed;
+        uint256 funding_rate;
+        uint256 last_funding_time;
+    }
+}
+
+#[public]
+impl PerpetualProtocol {
+    pub fn open_position(&mut self, size: U256, is_long: bool) -> Result<(), Error> {
+        let price = self.price_feed.get_price()?;
+        let required_margin = size * price * self.initial_margin / U256::from(10000);
+        
+        self.collateral_token.transfer_from(msg::sender(), Address::from(self), required_margin)?;
+        
+        let position = Position {
+            size: if is_long { size } else { -size },
+            entry_price: price,
+            collateral: required_margin,
+            last_funding_payment: evm::block_timestamp()
+        };
+        
+        self.positions.setter(msg::sender()).set(position);
+        Ok(())
+    }
+
+    pub fn liquidate(&mut self, trader: Address) -> Result<(), Error> {
+        let position = self.positions.getter(trader).get();
+        let current_price = self.price_feed.get_price()?;
+        let pnl = calculate_pnl(position.size, position.entry_price, current_price);
+        
+        if position.collateral + pnl < self.maintenance_margin {
+            // Liquidation rewards to caller
+            let reward = position.collateral * U256::from(5) / U256::from(100);
+            self.collateral_token.transfer(msg::sender(), reward)?;
+            self.positions.delete(trader);
+            Ok(())
+        } else {
+            Err(Error::PositionHealthy)
+        }
+    }
+}
+
+"
+26," Implement a governance token distribution mechanism with vesting  
+","Governance Token Distribution
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct GovernanceDistribution {
+        mapping(address => VestingSchedule) vesting_schedules;
+        uint256 total_allocated;
+        uint256 distribution_start;
+        #[borrow]
+        Erc20<TokenParams> governance_token;
+    }
+}
+
+#[public]
+impl GovernanceDistribution {
+    pub fn create_vesting_schedule(&mut self, beneficiary: Address, amount: U256, duration: U256) -> Result<(), Error> {
+        if msg::sender() != self.admin {
+            return Err(Error::Unauthorized);
+        }
+        
+        let schedule = VestingSchedule {
+            total_amount: amount,
+            duration,
+            claimed: U256::ZERO,
+            start_time: self.distribution_start,
+            revoked: false
+        };
+        
+        self.vesting_schedules.setter(beneficiary).set(schedule);
+        self.total_allocated += amount;
+        Ok(())
+    }
+
+    pub fn claim(&mut self) -> Result<(), Error> {
+        let schedule = self.vesting_schedules.getter(msg::sender()).get();
+        if schedule.revoked {
+            return Err(Error::VestingRevoked);
+        }
+        
+        let vested_amount = self.calculate_vested_amount(schedule);
+        let claimable = vested_amount - schedule.claimed;
+        
+        if claimable > U256::ZERO {
+            self.governance_token.mint(msg::sender(), claimable)?;
+            schedule.claimed += claimable;
+            self.vesting_schedules.setter(msg::sender()).set(schedule);
+        }
+        
+        Ok(())
+    }
+}
+
+"
+27," Implement a basic CDP system  
+","Collateralized Debt Position (CDP)
+","
+
+sol_storage! {
+    #[entrypoint]
+    pub struct CDPProtocol {
+        mapping(uint256 => CDP) cdps;
+        uint256 cdp_count;
+        uint256 minimum_collateral_ratio;
+        uint256 liquidation_penalty;
+        #[borrow]
+        Erc20<TokenParams> collateral_token;
+        #[borrow]
+        Erc20<StablecoinParams> stablecoin;
+        Oracle price_feed;
+    }
+}
+
+#[public]
+impl CDPProtocol {
+    pub fn create_cdp(&mut self, collateral_amount: U256, debt_amount: U256) -> Result<(), Error> {
+        let price = self.price_feed.get_price()?;
+        let collateral_value = collateral_amount * price;
+        
+        if collateral_value * U256::from(100) < debt_amount * self.minimum_collateral_ratio {
+            return Err(Error::InsufficientCollateral);
+        }
+        
+        self.collateral_token.transfer_from(msg::sender(), Address::from(self), collateral_amount)?;
+        self.stablecoin.mint(msg::sender(), debt_amount)?;
+        
+        let cdp = CDP {
+            id: self.cdp_count.get(),
+            owner: msg::sender(),
+            collateral: collateral_amount,
+            debt: debt_amount,
+            created_at: evm::block_timestamp()
+        };
+        
+        self.cdps.setter(self.cdp_count.get()).set(cdp);
+        self.cdp_count.set(self.cdp_count.get() + U256::ONE);
+        Ok(())
+    }
+
+    pub fn liquidate_cdp(&mut self, cdp_id: U256) -> Result<(), Error> {
+        let cdp = self.cdps.getter(cdp_id).get();
+        let price = self.price_feed.get_price()?;
+        let collateral_value = cdp.collateral * price;
+        
+        if collateral_value * U256::from(100) >= cdp.debt * self.minimum_collateral_ratio {
+            return Err(Error::CDPHealthy);
+        }
+        
+        let penalty = cdp.debt * self.liquidation_penalty / U256::from(100);
+        let reward = cdp.collateral * U256::from(5) / U256::from(100);
+        
+        self.stablecoin.burn_from(msg::sender(), cdp.debt + penalty)?;
+        self.collateral_token.transfer(msg::sender(), reward)?;
+        
+        // Return remaining collateral to CDP owner
+        let remaining_collateral = cdp.collateral - reward;
+        self.collateral_token.transfer(cdp.owner, remaining_collateral)?;
+        
+        self.cdps.delete(cdp_id);
+        Ok(())
+    }
+}
+"
