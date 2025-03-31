@@ -3,25 +3,26 @@ import streamlit as st
 from load import init_code, clear_database, update_db_code
 
 with st.sidebar:
-    st.button("Init Default DB", on_click=init_code)
-    st.button("Reset DB", on_click=clear_database)
+    #st.button("Init Default DB", on_click=init_code)
+    #st.button("Reset DB", on_click=clear_database)
     # Upload more files for RAG
-    uploaded_files = st.file_uploader("Choose 1 or many file(s)", accept_multiple_files=True, type=['.md', '.json'], help="Only Markdown or JSON files")
-    for uploaded_file in uploaded_files:
-        # To read file as bytes:
-        print(uploaded_file.name)
-        bytes_data = uploaded_file.getvalue()
-        with open(uploaded_file.name, 'wb') as f:
-            f.write(bytes_data)
-        # call load_docs_json
-        print(uploaded_file.type)
-        update_db_code(uploaded_file.name, uploaded_file.type == 'application/json')
+    #uploaded_files = st.file_uploader("Choose 1 or many file(s)", accept_multiple_files=True, type=['.md', '.json'], help="Only Markdown or JSON files")
+    #for uploaded_file in uploaded_files:
+    #    # To read file as bytes:
+    #    print(uploaded_file.name)
+    #    bytes_data = uploaded_file.getvalue()
+    #    with open(uploaded_file.name, 'wb') as f:
+    #        f.write(bytes_data)
+    #    # call load_docs_json
+    #    print(uploaded_file.type)
+    #    update_db_code(uploaded_file.name, uploaded_file.type == 'application/json')
 
         
     # Reset Vector DAta
     option = st.selectbox(
         "Model to use",
-        ("mistral", "llama3", "llama3.3", "deepseek-r1:7b"),
+        ("mistral", "llama3", "deepseek-r1:7b")
+        #("mistral", "llama3", "llama3.3", "deepseek-r1:7b"),
     )
 
     st.write("You selected:", option)
