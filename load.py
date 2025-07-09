@@ -39,6 +39,8 @@ def metadata_func(record: dict, metadata: dict) -> dict:
 
 def get_embedding_function():
     embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    
+
     return embeddings
 
 def load_documents_md(new_file: str = None):
