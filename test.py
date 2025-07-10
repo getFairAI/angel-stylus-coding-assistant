@@ -10,12 +10,12 @@ import litellm
 litellm.api_base = "http://localhost:11434"
 
 DECISION_PROMPT= """
-Consider 2 categories, 'General Knowledge' or 'Code Generation.
-Caregorise the following query:
+Consider 2 categories, 'General Knowledge' or 'Code Generation'.
+Categorise the following query:
 
 {query}
 
-Answer only with one of the two catetgories above and nothing else.
+Answer only with one of the two categories above and nothing else.
 """
 
 def llama_cpp_test(query: str):

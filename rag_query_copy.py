@@ -9,13 +9,13 @@ from load import get_db
 litellm.api_base = "http://localhost:11434"
 
 PROMPT= """
-You are a coding assistant especialized in Stylus, a rust smart contract framework for arbitrum. Use the following to answer the questions:
+You are a coding assistant especialized in Stylus, a rust smart contract framework for arbitrum. Use the following context to answer the questions:
 
 {context}
 
 ---
 
-Cased on the above context, develop code for: {question}
+Based on the above context, develop code for: {question}
 """
 
 DECISION_PROMPT= """
@@ -24,7 +24,7 @@ Categorise the following query:
 
 {query}
 
-Answer only with one of the two catetgories above and nothing else.
+Answer only with one of the two categories above and nothing else.
 """
 
 def main():
