@@ -4,3 +4,4 @@ __pycache__/
 .vector_data_docs/
 .synth-status-*
 .synth-status
+condaEnvPython/
