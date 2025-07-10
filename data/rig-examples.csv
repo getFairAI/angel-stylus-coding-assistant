@@ -1,0 +1,576 @@
+,Instruction,Title,Response
+0,Basic agent implementation using OpenAI's GPT model,Demonstrates creating a basic agent with OpenAI's GPT model and using it to generate responses,"use std::env;
+
+use rig::{completion::Prompt, providers};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    // Create OpenAI client
+    let client = providers::openai::Client::new(
+        &env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""),
+    );
+
+    // Create agent with a single context prompt
+    let comedian_agent = client
+        .agent(""gpt-4o"")
+        .preamble(""You are a comedian here to entertain the user using humour and jokes."")
+        .build();
+
+    // Prompt the agent and print the response
+    let response = comedian_agent.prompt(""Entertain me!"").await?;
+    println!(""{}"", response);
+
+    Ok(())
+}"
+1,Autonomous agent implementation that continuously updates a counter,Shows how to create an autonomous agent that continuously performs operations until a condition is met,"use rig::providers::openai::Client;
+use schemars::JsonSchema;
+use std::env;
+
+#[derive(Debug, serde::Deserialize, JsonSchema, serde::Serialize)]
+struct Counter {
+    /// The score of the document
+    number: u32,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    // Create OpenAI client
+    let openai_api_key = env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set"");
+    let openai_client = Client::new(&openai_api_key);
+
+    let agent = openai_client.extractor::<Counter>(""gpt-4"")
+        .preamble(""
+            Your role is to add a random number between 1 and 64 (using only integers) to the previous number.
+        "")
+        .build();
+
+    let mut number: u32 = 0;
+
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+
+    loop {
+        let response = agent.extract(&number.to_string()).await.unwrap();
+
+        if response.number >= 2000 {
+            break;
+        } else {
+            number += response.number
+        }
+
+        interval.tick().await;
+    }
+
+    println!(""Finished with number: {number:?}"");
+
+    Ok(())
+}"
+2,Implementation of an agent evaluator and optimizer for code generation,Demonstrates an agent that can evaluate and optimize code implementations through iterative feedback,"use std::env;
+
+use rig::{completion::Prompt, providers::openai::Client};
+use schemars::JsonSchema;
+
+#[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]
+struct Evaluation {
+    evaluation_status: EvalStatus,
+    feedback: String,
+}
+
+#[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug, PartialEq)]
+enum EvalStatus {
+    Pass,
+    NeedsImprovement,
+    Fail,
+}
+
+// ... rest of the implementation ..."
+3,Orchestrates multiple agents to break down and handle complex tasks,Shows how to coordinate multiple agents to handle complex tasks by breaking them down into subtasks,"use std::env;
+
+use rig::providers::openai::Client;
+use schemars::JsonSchema;
+
+#[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]
+struct Specification {
+    tasks: Vec<Task>,
+}
+
+// ... rest of the implementation ..."
+4,Implements parallel processing of tasks using multiple agents,Shows how to run multiple agent operations in parallel for efficient processing,"use std::env;
+
+use rig::pipeline::agent_ops::extract;
+use rig::{parallel, pipeline::{self, passthrough, Op}, providers::openai::Client};
+use schemars::JsonSchema;
+
+// ... rest of the implementation ..."
+5,Demonstrates chaining of prompts between agents,Shows how to chain multiple agents together where output from one becomes input for another,"use std::env;
+
+use rig::{pipeline::{self, Op}, providers::openai::Client};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let openai_api_key = env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set"");
+    let openai_client = Client::new(&openai_api_key);
+
+    let rng_agent = openai_client.agent(""gpt-4"")
+        .preamble(""
+            You are a random number generator designed to only either output a single whole integer that is 0 or 1. Only return the number.
+        "")
+        .build();
+
+    // ... rest of implementation ..."
+6,Implements agent routing based on input classification,Shows how to route requests to different agents based on input classification,"use std::env;
+
+use rig::{pipeline::{self, Op, TryOp}, providers::openai::Client};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let openai_api_key = env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set"");
+    let openai_client = Client::new(&openai_api_key);
+
+    let animal_agent = openai_client.agent(""gpt-4"")
+        .preamble(""
+            Your role is to categorise the user's statement using the following values: [sheep, cow, dog]
+        "")
+        .build();
+
+    // ... rest of implementation ..."
+7,Demonstrates agent with context-aware processing,Shows how to create an agent with multiple context documents for enhanced understanding,"use std::env;
+
+use rig::{agent::AgentBuilder, completion::Prompt, providers::cohere};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let cohere_client = cohere::Client::new(&env::var(""COHERE_API_KEY"").expect(""COHERE_API_KEY not set""));
+    let model = cohere_client.completion_model(""command-r"");
+
+    let agent = AgentBuilder::new(model)
+        .context(""Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets"")
+        .context(""Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."")
+        .context(""Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."")
+        .build();
+
+    // ... rest of implementation ..."
+8,Integration with DeepSeek's language model,Shows how to integrate DeepSeek's language model with Rig's agent system,"use rig::{completion::{Prompt, ToolDefinition}, providers, tool::Tool};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = providers::deepseek::Client::from_env();
+    let agent = client
+        .agent(""deepseek-chat"")
+        .preamble(""You are a helpful assistant."")
+        .build();
+
+    // ... rest of implementation ..."
+9,Integration with EchoChambers API for multi-agent chat,Implements integration with EchoChambers API for creating and managing chat rooms with multiple agents,"use anyhow::Result;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use rig::{completion::{ToolDefinition}, tool::Tool};
+use serde::{Deserialize, Serialize};
+
+// ... rest of implementation ..."
+10,Integration with Galadriel AI's language model,Shows how to use Galadriel AI's language model with Rig's agent system,"use rig::{completion::Prompt, providers};
+use std::env;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = providers::galadriel::Client::new(
+        &env::var(""GALADRIEL_API_KEY"").expect(""GALADRIEL_API_KEY not set""),
+        env::var(""GALADRIEL_FINE_TUNE_API_KEY"").ok().as_deref(),
+    );
+
+    // ... rest of implementation ..."
+11,Integration with Grok's language model,Demonstrates multiple usage patterns with Grok's language model including basic usage and tool integration,"use std::env;
+use rig::{agent::AgentBuilder, completion::{Prompt, ToolDefinition}, providers, tool::Tool};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    println!(""Running basic agent with grok"");
+    basic().await?;
+
+    println!(""\nRunning grok agent with tools"");
+    tools().await?;
+
+    // ... rest of implementation ..."
+12,Integration with Groq's language model,Shows how to integrate with Groq's language model service,"use std::env;
+
+use rig::{completion::Prompt, providers::{self, groq::DEEPSEEK_R1_DISTILL_LLAMA_70B}};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = providers::groq::Client::new(&env::var(""GROQ_API_KEY"").expect(""GROQ_API_KEY not set""));
+
+    // ... rest of implementation ..."
+13,Integration with Hyperbolic's language model,Demonstrates integration with Hyperbolic's language model service,"use std::env;
+
+use rig::{completion::Prompt, providers};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = providers::hyperbolic::Client::new(
+        &env::var(""HYPERBOLIC_API_KEY"").expect(""HYPERBOLIC_API_KEY not set""),
+    );
+
+    // ... rest of implementation ..."
+14,Integration with file loaders for agent context,Shows how to use file loaders to provide context to agents from filesystem content,"use std::env;
+
+use rig::{agent::AgentBuilder, completion::Prompt, loaders::FileLoader, providers::openai::{self, GPT_4O}};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let openai_client = openai::Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+    let model = openai_client.completion_model(GPT_4O);
+
+    let examples = FileLoader::with_glob(""rig-core/examples/*.rs"")?
+        .read_with_path()
+        .ignore_errors()
+        .into_iter();
+
+    // ... rest of implementation ..."
+15,Integration with Moonshot's language model,Demonstrates integration with Moonshot's language model service,"use rig::agent::AgentBuilder;
+use rig::providers::moonshot::{CompletionModel, MOONSHOT_CHAT};
+use rig::{completion::Prompt, providers};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    println!(""Running basic agent with moonshot"");
+    basic_moonshot().await?;
+
+    println!(""\nRunning moonshot agent with context"");
+    context_moonshot().await?;
+
+    // ... rest of implementation ..."
+16,Integration with Ollama for local model inference,Shows how to use locally hosted Ollama models with Rig,"use rig::{completion::Prompt, providers};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    // Create ollama client
+    let client = providers::ollama::Client::new();
+
+    let comedian_agent = client
+        .agent(""qwen2.5:14b"")
+        .preamble(""You are a comedian here to entertain the user using humour and jokes."")
+        .build();
+
+    // ... rest of implementation ..."
+17,Integration with Together AI's language model service,Shows how to integrate with Together AI's model hosting service,"use std::env;
+
+use rig::{completion::Prompt, providers};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = providers::together::Client::new(
+        &env::var(""TOGETHER_API_KEY"").expect(""TOGETHER_API_KEY not set"")
+    );
+
+    let agent = client
+        .agent(""mistralai/Mixtral-8x7B-Instruct-v0.1"")
+        .preamble(""You are a helpful assistant."")
+        .build();
+
+    // ... rest of implementation ..."
+18,Implementation of a calculator chatbot using tools,Implements a chatbot that can perform mathematical calculations using custom tools,"use rig::{completion::{Prompt, ToolDefinition}, providers, tool::Tool};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+#[derive(Deserialize, Serialize)]
+struct CalculatorInput {
+    expression: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = providers::openai::Client::from_env();
+    let calculator = Tool::new(""calculator"", calculate);
+
+    // ... rest of implementation ..."
+19,Implementation of a debate system using multiple agents,Creates a debate system where multiple agents argue different sides of a topic,"use std::env;
+
+use rig::{completion::Prompt, providers::openai::Client};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+
+    let pro_agent = client
+        .agent(""gpt-4"")
+        .preamble(""You are a debater arguing in favor of the given topic."")
+        .build();
+
+    let con_agent = client
+        .agent(""gpt-4"")
+        .preamble(""You are a debater arguing against the given topic."")
+        .build();
+
+    // ... rest of implementation ..."
+20,Implementation of a PDF processing agent,Shows how to create an agent that can process and analyze PDF documents,"use std::env;
+
+use rig::{completion::Prompt, loaders::PdfLoader, providers::openai::Client};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+
+    let pdf_content = PdfLoader::new(""path/to/document.pdf"")?;
+    
+    let pdf_agent = client
+        .agent(""gpt-4"")
+        .context(pdf_content)
+        .preamble(""You are an expert at analyzing PDF documents and answering questions about their content."")
+        .build();
+
+    // ... rest of implementation ..."
+21,Implementation of RAG (Retrieval Augmented Generation),Demonstrates implementation of Retrieval Augmented Generation using vector store,"use rig::{completion::Prompt, providers::openai::Client, rag::{Document, Store}};
+use serde::{Deserialize, Serialize};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+    
+    let store = Store::new(client.embedding_model(""text-embedding-3-small""));
+    store.add_documents(vec![/* documents */]).await?;
+
+    let rag_agent = client
+        .agent(""gpt-4"")
+        .with_rag(store)
+        .build();
+
+    // ... rest of implementation ..."
+22,Implementation of a sentiment analysis classifier,Creates a sentiment analysis classifier using structured output,"use rig::{completion::Prompt, providers::openai::Client};
+use schemars::JsonSchema;
+
+#[derive(Debug, serde::Deserialize, JsonSchema, serde::Serialize)]
+struct SentimentAnalysis {
+    sentiment: Sentiment,
+    confidence: f32,
+}
+
+#[derive(Debug, serde::Deserialize, JsonSchema, serde::Serialize)]
+enum Sentiment {
+    Positive,
+    Neutral,
+    Negative,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+    
+    let classifier = client
+        .extractor::<SentimentAnalysis>(""gpt-4"")
+        .preamble(""You are a sentiment analyzer that classifies text as positive, neutral, or negative."")
+        .build();
+
+    // ... rest of implementation ..."
+23,Implementation of speech transcription using Whisper,Shows how to use OpenAI's Whisper model for audio transcription,"use std::env;
+
+use rig::{providers::openai::Client, transcription::AudioSource};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+    
+    let audio = AudioSource::from_file(""path/to/audio.mp3"")?;
+    let transcriber = client.transcriber(""whisper-1"");
+    
+    let transcript = transcriber.transcribe(audio).await?;
+    println!(""{}"", transcript);
+
+    // ... rest of implementation ..."
+24,Implementation of vector search with dynamic tools,Demonstrates vector search capabilities with dynamically loaded tools,"use rig::{completion::Prompt, providers::openai::Client, vector::{Store, Document}};
+use serde::{Deserialize, Serialize};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+    
+    let store = Store::new(client.embedding_model(""text-embedding-3-small""));
+    let tools = vec![/* dynamic tool definitions */];
+
+    let search_agent = client
+        .agent(""gpt-4"")
+        .with_vector_store(store)
+        .with_dynamic_tools(tools)
+        .build();
+
+    // ... rest of implementation ..."
+25,Implementation of vector search with Ollama,Shows how to implement vector search using locally hosted Ollama models,"use rig::{completion::Prompt, providers::ollama::Client, vector::{Store, Document}};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new();
+    
+    let store = Store::new(client.embedding_model(""llama2""));
+    store.add_documents(vec![/* documents */]).await?;
+
+    let search_agent = client
+        .agent(""llama2"")
+        .with_vector_store(store)
+        .build();
+
+    // ... rest of implementation ..."
+26,Implementation of a web scraping agent,Creates an agent that can scrape and analyze web content,"use rig::{completion::Prompt, providers::openai::Client, tool::Tool};
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
+struct WebContent {
+    url: String,
+    content: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new(&env::var(""OPENAI_API_KEY"").expect(""OPENAI_API_KEY not set""));
+    let scraper = Tool::new(""web_scraper"", scrape_webpage);
+
+    let web_agent = client
+        .agent(""gpt-4"")
+        .with_tool(scraper)
+        .build();
+
+    // ... rest of implementation ..."
+27,Vector search implementation using FastEmbed,Demonstrates using FastEmbed for vector embeddings and search,"use rig::{embeddings::Embed, providers::fastembed::Client};
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct WordDefinition {
+    id: String,
+    word: String,
+    #[embed]
+    definitions: Vec<String>,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = Client::new();
+    let model = client.embedding_model(""all-MiniLM-L6-v2"");
+    // ... rest of implementation ..."
+28,Vector search using LanceDB with ANN (Approximate Nearest Neighbor),Shows how to use LanceDB with ANN search for efficient vector retrieval,"use rig::{embeddings::Embed, providers::openai};
+use lancedb::Table;
+
+mod fixture;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+29,Vector search using LanceDB with ENN (Exact Nearest Neighbor),Shows how to use LanceDB with exact nearest neighbor search,"use rig::{embeddings::Embed, providers::openai};
+use lancedb::Table;
+
+mod fixture;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+30,Vector search using LanceDB with S3 storage and ANN,Demonstrates using LanceDB with S3 storage for vector search,"use rig::{embeddings::Embed, providers::openai};
+use lancedb::Table;
+
+mod fixture;
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+31,Vector search implementation using MongoDB,Shows how to implement vector search using MongoDB Atlas,"use rig::{embeddings::Embed, providers::openai};
+use mongodb::{Client, Collection};
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct Word {
+    #[serde(rename = ""_id"")]
+    id: String,
+    #[embed]
+    definition: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+32,Vector search implementation using Neo4j,Shows how to implement vector search using Neo4j graph database,"use rig::{embeddings::Embed, providers::openai};
+use neo4rs::Graph;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct Word {
+    pub id: String,
+    #[embed]
+    pub definition: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+33,Vector search implementation using PostgreSQL,Shows how to implement vector search using PostgreSQL with pgvector,"use rig::{embeddings::Embed, providers::openai};
+use sqlx::PgPool;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct WordDefinition {
+    id: String,
+    word: String,
+    #[embed]
+    definitions: Vec<String>,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+34,Vector search implementation using Qdrant,Shows how to implement vector search using Qdrant vector database,"use rig::{embeddings::Embed, providers::openai};
+use qdrant_client::prelude::*;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct Word {
+    id: String,
+    #[embed]
+    definition: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+35,Vector search implementation using SQLite,Shows how to implement vector search using SQLite database,"use rig::{embeddings::Embed, providers::openai};
+use tokio_rusqlite::Connection;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct Document {
+    id: String,
+    #[embed]
+    content: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+36,Vector search implementation using SurrealDB,Shows how to implement vector search using SurrealDB,"use rig::{embeddings::Embed, providers::openai};
+use surrealdb::Surreal;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct WordDefinition {
+    word: String,
+    #[embed]
+    definition: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = openai::Client::from_env();
+    let model = client.embedding_model(""text-embedding-3-small"");
+    // ... rest of implementation ..."
+37,Agent implementation using EternalAI,Shows how to implement agents using EternalAI's models,"use rig::{agent::AgentBuilder, completion::Prompt, providers::eternalai};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let client = eternalai::Client::from_env();
+    let model = client.completion_model(""unsloth/Llama-3.3-70B-Instruct-bnb-4bit"", None);
+    // ... rest of implementation ..."

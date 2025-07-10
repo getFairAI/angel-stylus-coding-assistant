@@ -1,8 +1,29 @@
 import pandas as pd
+import json
 
-
+def parse_stylus_dataset():
+    with open('./data/stylus-dataset.json', 'r') as file:
+        content = file.read()
+        file.close()
+    examples = list(json.loads(content))
+    titles_list = []
+    instructions_list = []
+    responses_list = []
+    for example in examples:
+        titles_list.append(f"{example['category']} - {example['metadata']['features']}")
+        instructions_list.append(example['instruction'])
+        responses_list.append(example['code'])
+    
+    final_data = {
+        'Instruction': instructions_list,
+        'Title': titles_list,
+        'Response': responses_list 
+    }
+    dataframe = pd.DataFrame(final_data)
+    dataframe.to_csv('./data/stylus-examples-2.csv')
+    
 def parse_artifical_data_set():
-    with open('./artificial-data-set.md', 'r') as file:
+    with open('./data/artificial-data-set.md', 'r') as file:
         content = file.read()
         file.close()
     
@@ -28,14 +49,32 @@ def parse_artifical_data_set():
         'Response': responses_list 
     }
     dataframe = pd.DataFrame(final_data)
-    dataframe.to_csv('styus-examples.csv')
+    dataframe.to_csv('./data/styus-examples.csv')
     
 def parse_rig_data_set():
-    pd.read_json('./rig-data-set.json')
+    with open('./data/rig-data-set.json', 'r') as file:
+        content = file.read()
+        file.close()
+    examples = list(json.loads(content))
+    titles_list = []
+    instructions_list = []
+    responses_list = []
+    for example in examples:
+        titles_list.append(f"{example['metadata']['description']}")
+        instructions_list.append(example['instruction'])
+        responses_list.append(example['code'])
+    
+    final_data = {
+        'Instruction': instructions_list,
+        'Title': titles_list,
+        'Response': responses_list 
+    }
+    dataframe = pd.DataFrame(final_data)
+    dataframe.to_csv('./data/rig-examples.csv')
     
 def main():
     return    
     
     
 if __name__ == "__main__":
-    parse_artifical_data_set()
+    parse_rig_data_set()
