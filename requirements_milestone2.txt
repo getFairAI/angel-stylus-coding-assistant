@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+ollama
+python-dotenv
+pyjwt
+pydantic
+chromadb
+fuzzywuzzy
+python-Levenshtein
+requests
+beautifulsoup4
