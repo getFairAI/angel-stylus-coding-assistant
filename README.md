@@ -67,3 +67,12 @@ curl -X POST https://stylus-demo.duckdns.org/api/stylus-chat \
   -H "Content-Type: application/json" \
   -d '{"model": "llama3.1:8b", "prompt": "How do I deploy a Stylus contract?"}'
 
+
+## 💬 Web Interface
+
+You can also test the AI assistant using a simple graphical interface:
+
+👉 [https://stylus-demo.duckdns.org/assistant](https://stylus-demo.duckdns.org/assistant)
+
+No setup or code required — just open the link and start chatting.
+
