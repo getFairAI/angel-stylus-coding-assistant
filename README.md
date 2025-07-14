@@ -65,5 +65,5 @@ You can specify any of the following model names in the `model` field:
 ```bash
 curl -X POST https://stylus-demo.duckdns.org/api/stylus-chat \
   -H "Content-Type: application/json" \
-  -d '{"model": "deepseek-r1:7b", "prompt": "How do I deploy a Stylus contract?"}'
-```
+  -d '{"model": "llama3.1:8b", "prompt": "How do I deploy a Stylus contract?"}'
+
