@@ -393,3 +393,14 @@ zope.component==4.3.0
 zope.event==4.4
 zope.hookable==5.1.0
 zope.interface==5.4.0
+fastapi
+uvicorn
+ollama
+python-dotenv
+pyjwt
+pydantic
+chromadb
+fuzzywuzzy
+python-Levenshtein
+requests
+beautifulsoup4
