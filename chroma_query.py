@@ -3,10 +3,30 @@ import ollama
 from analyze_prompt import get_filters_wrapper
 from logger import log_info
 
+class OllamaEmbeddingFunction:
+    """Custom embedding function for ChromaDB using Ollama."""
+    
+    def __call__(self, input):
+        """Generate embeddings for input texts."""
+        import ollama
+        
+        if isinstance(input, str):
+            input = [input]
+        
+        embeddings = []
+        for text in input:
+            result = ollama.embeddings(model="nomic-embed-text", prompt=text)
+            embeddings.append(result["embedding"])
+        return embeddings
 
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
-collection = chroma_client.get_or_create_collection(name="stylus_data")
+# Use the same embedding function as setup_database.py
+embedding_function = OllamaEmbeddingFunction()
+collection = chroma_client.get_or_create_collection(
+    name="stylus_data",
+    embedding_function=embedding_function
+)
 
 def get_prompt_embedding(user_prompt):
     return ollama.embeddings(model="nomic-embed-text", prompt=user_prompt)["embedding"]

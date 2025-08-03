@@ -1,0 +1,52 @@
+# Core dependencies for Angel Stylus Coding Assistant with MCP support
+
+# Web Framework
+fastapi==0.115.12
+uvicorn==0.34.0
+streamlit==1.41.1
+
+# HTTP Client
+requests==2.32.3
+httpx==0.28.1
+
+# Vector Database and Embeddings
+chromadb==0.6.3
+chroma-hnswlib==0.7.6
+
+# LangChain for RAG (compatible versions)
+langchain-community==0.2.16
+langchain>=0.2.16,<0.3.0
+langchain-text-splitters>=0.2.0,<0.3.0
+
+# LLM Integration
+ollama==0.4.9
+litellm>=1.0.0
+
+# Document Processing
+pypdf==5.2.0
+python-multipart==0.0.18
+
+# Data Processing
+pandas==2.2.3
+numpy==2.0.2
+fuzzywuzzy==0.18.0
+python-levenshtein==0.26.1
+
+# JSON and Data Utils
+jq==1.8.0
+pydantic==2.10.5
+
+# Utilities
+python-dotenv==1.0.1
+coloredlogs==15.0.1
+tqdm==4.67.1
+
+# Additional dependencies that might be needed
+aiohttp==3.11.14
+anyio==4.9.0
+backoff==2.2.1
+diskcache==5.6.3
+filelock==3.18.0
+gitpython==3.1.44
+humanfriendly==10.0
+tenacity==9.0.0 

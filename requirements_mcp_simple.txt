@@ -1,0 +1,39 @@
+# Essential dependencies for Angel Stylus Coding Assistant with MCP support
+# Using flexible versions to avoid conflicts
+
+# Web Framework
+fastapi
+uvicorn
+streamlit
+
+# HTTP Client
+requests
+httpx
+
+# Vector Database and Embeddings
+chromadb
+chroma-hnswlib
+
+# LangChain for RAG (letting pip resolve versions)
+langchain-community
+langchain
+langchain-text-splitters
+
+# LLM Integration
+ollama
+litellm
+
+# Data Processing (flexible versions)
+pandas
+numpy
+fuzzywuzzy
+python-levenshtein
+
+# JSON and Data Utils
+jq
+pydantic
+
+# Utilities
+python-dotenv
+coloredlogs
+tqdm 
