@@ -10,3 +10,4 @@ condaEnvPython/
 logs/
 chroma_db/
 newTestPython/
+/venv
