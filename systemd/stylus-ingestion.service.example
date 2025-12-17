@@ -1,0 +1,18 @@
+[Unit]
+Description=Run Stylus data ingestion pipelines
+After=network.target
+
+[Service]
+Type=oneshot
+
+User=YOUR_USER
+Group=YOUR_USER
+
+WorkingDirectory=/path/to/wow-stylus
+ExecStart=/path/to/wow-stylus/stylus-env/bin/python /path/to/wow-stylus/src/run_all_data_ingestions.py
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

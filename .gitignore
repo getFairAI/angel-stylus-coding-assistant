@@ -1,12 +1,59 @@
+# =========================
+# Python
+# =========================
 __pycache__/
-.stylus-venv/
-.vector_data_code/
-.vector_data_docs/
-.synth-status-*
-.synth-status
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
 
-condaEnvPython/
+# =========================
+# Virtual Environments
+# =========================
+venv/
+.venv/
+env/
+ENV/
+stylys-env/
 
-logs/
+# =========================
+# Chroma / Vector DB
+# =========================
 chroma_db/
-newTestPython/
+
+# =========================
+# Ingested Data
+# =========================
+data/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# System / Editor
+# =========================
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# JetBrains
+.idea/
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+
+# =========================
+# Temporary / Runtime
+# =========================
+tmp/
+.cache/

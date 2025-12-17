@@ -1,4 +1,17 @@
-chromadb==0.6.3
-langchain-community==0.2.16
-streamlit==1.41.1
-jq==1.8.0
+# --- Web & API ---
+fastapi>=0.110.0
+uvicorn>=0.27.0
+
+# --- HTTP & scraping ---
+requests>=2.31.0
+beautifulsoup4>=4.12.3
+
+# --- Vector database ---
+chromadb>=0.5.0
+
+# --- Embeddings / LLM runtime ---
+ollama>=0.1.8
+
+# --- Utilities ---
+pydantic>=2.6.0
+python-dateutil>=2.9.0
