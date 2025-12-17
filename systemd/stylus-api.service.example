@@ -1,0 +1,18 @@
+[Unit]
+Description=Stylus Documentation Retrieval API
+After=network.target
+
+[Service]
+Type=simple
+
+User=YOUR_USER
+Group=YOUR_USER
+
+WorkingDirectory=/path/to/wow-stylus
+ExecStart=/path/to/wow-stylus/stylus-env/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8001
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
