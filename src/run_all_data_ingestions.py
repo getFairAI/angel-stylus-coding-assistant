@@ -32,10 +32,12 @@ def main():
     from data_blog_ingestion import ingest_stylus_blog
     from data_github_ingestion import ingest_github_readmes
     from data_documentation_ingestion import ingest_stylus_docs
+    from fill_chroma import fill_chroma
 
     run_step("Stylus Blog", ingest_stylus_blog)
     run_step("GitHub READMEs", ingest_github_readmes)
     run_step("Stylus Documentation", ingest_stylus_docs)
+    run_step("Chroma Index Rebuild", fill_chroma)
 
     write_ingestion_log("====================================")
     write_ingestion_log("Stylus ingestion pipeline finished")
