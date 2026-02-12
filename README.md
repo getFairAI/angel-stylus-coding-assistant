@@ -15,6 +15,7 @@ It indexes official docs, Stylus blog posts, and curated community repos, then r
 
 - `GET /health`
 - `POST /stylus-chat`
+- `POST /openrouter/chat/completions` (server-side OpenRouter proxy; keeps API key off the frontend)
 
 Request:
 
@@ -38,6 +39,17 @@ Response (example):
 }
 ```
 
+OpenRouter proxy request (example):
+
+```json
+{
+  "model": "openai/gpt-4o-mini",
+  "messages": [{ "role": "user", "content": "What are the newest Stylus tools?" }],
+  "tools": [],
+  "tool_choice": "auto"
+}
+```
+
 ## Local Run
 
 ```bash
@@ -46,9 +58,29 @@ python src/run_all_data_ingestions.py
 uvicorn main:app --app-dir src --host 0.0.0.0 --port 8001
 ```
 
+To enable the LLM proxy endpoint:
+
+```bash
+export OPENROUTER_API_KEY=...
+```
+
+## Environment
+
+`.env.example` documents the runtime contract:
+
+- `HOST` / `PORT` for API bind address
+- `CORS_ORIGINS` for allowed frontend origins
+- `OPENROUTER_API_KEY` for server-side LLM proxying
+
 ## QA
 
-From workspace root:
+Repo-level checks:
+
+```bash
+python -m pytest -q
+```
+
+Workspace-level check (if using paired workspace scripts):
 
 ```bash
 ./scripts/qa-backend.sh setup-dev-env 8001
@@ -61,7 +93,35 @@ This runs:
 - health probe
 - `/stylus-chat` smoke request
 
+## Docker
+
+Run directly from this repo:
+
+```bash
+docker network create stylus-dev-net 2>/dev/null || true
+docker compose up -d --build
+```
+
+Stop:
+
+```bash
+docker compose down --remove-orphans
+```
+
+Health checks:
+
+```bash
+curl http://localhost:8001/health
+curl -X POST http://localhost:8001/openrouter/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}'
+```
+
 ## Notes
 
 - `src/run_all_data_ingestions.py` now rebuilds Chroma after ingestion.
 - `src/debug_chroma_query.py` is a manual utility, not a pytest module.
+
+## Additional Docs
+
+- `docs/deployment-and-proxy.md` for architecture, security model, and deployment flow.

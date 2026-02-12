@@ -1,14 +1,18 @@
 from fastapi import FastAPI
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 import time
 import os
+import requests
 
 from retrieve_chroma_docs import retrieve_stylus_context
 from basic_logs import write_request_log
 
 app = FastAPI()
+OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 DEFAULT_AGENT_GUIDANCE = {
     "behavior": "references_first",
@@ -73,6 +77,44 @@ def stylus_chat(request: StylusRequest):
 
     # Return retrieval payload (MCP/IDE/LLM will decide what to do with it)
     return result
+
+
+@app.post("/openrouter/chat/completions")
+def openrouter_chat_completions(payload: dict):
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="OPENROUTER_API_KEY is not configured on the backend.",
+        )
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Payload must be a JSON object.")
+
+    proxy_payload = dict(payload)
+    proxy_payload["stream"] = False
+
+    try:
+        upstream = requests.post(
+            OPENROUTER_CHAT_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=proxy_payload,
+            timeout=45,
+        )
+    except requests.RequestException as exc:
+        write_request_log(f"[error] OpenRouter proxy request failed | {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=502, detail="OpenRouter proxy request failed.") from exc
+
+    content_type = upstream.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            return JSONResponse(status_code=upstream.status_code, content=upstream.json())
+        except ValueError:
+            return PlainTextResponse(status_code=upstream.status_code, content=upstream.text)
+    return PlainTextResponse(status_code=upstream.status_code, content=upstream.text)
 
 
 if __name__ == "__main__":
