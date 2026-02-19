@@ -15,8 +15,8 @@ def get_chroma_documents(prompt):
     query_embedding = get_prompt_embedding(prompt)
     
     results = collection.query(
-    query_embeddings=[query_embedding], 
-    n_results=CHROMA_RESULTS,
+        query_embeddings=[query_embedding], 
+        n_results=CHROMA_RESULTS,
     )
     num_chunks = len(results["documents"][0])
     return results["documents"][0]

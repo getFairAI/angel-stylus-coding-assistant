@@ -27,20 +27,20 @@ def main():
     write_ingestion_log("Stylus ingestion pipeline started")
     write_ingestion_log("====================================")
 
-
     # Import inside main to avoid import-time crashes
     from data_blog_ingestion import ingest_stylus_blog
     from data_github_ingestion import ingest_github_readmes
     from data_documentation_ingestion import ingest_stylus_docs
+    from data_github_issues_ingestion import ingest_github_issues
 
     run_step("Stylus Blog", ingest_stylus_blog)
     run_step("GitHub READMEs", ingest_github_readmes)
+    run_step("Github Issues & Comments", ingest_github_issues)
     run_step("Stylus Documentation", ingest_stylus_docs)
 
     write_ingestion_log("====================================")
     write_ingestion_log("Stylus ingestion pipeline finished")
     write_ingestion_log("====================================")
-
 
 
 if __name__ == "__main__":
