@@ -5,13 +5,14 @@ The skill response should include a human-readable Markdown report followed by a
 ## Markdown sections (required)
 1. High-Level Recommendation (Prose)
 2. Impact Verdicts
-3. Candidate Summary
-4. Score Breakdown
-5. Good-Candidate Signals Found
-6. Bad-Candidate Signals Found
-7. Hard Blockers and Mitigations
-8. Unknowns and Reliability Disclaimer
-9. Evidence Snapshot
+3. Ballpark Impact Estimate (Assumed Usage)
+4. Candidate Summary
+5. Score Breakdown
+6. Good-Candidate Signals Found
+7. Bad-Candidate Signals Found
+8. Hard Blockers and Mitigations
+9. Unknowns and Reliability Disclaimer
+10. Evidence Snapshot
 
 ### High-Level Recommendation (Prose) requirements
 - Must appear first in the report.
@@ -26,6 +27,16 @@ The skill response should include a human-readable Markdown report followed by a
 - `low_stylus_impact`
 - Must provide a short reason and confidence for each classified contract.
 - Keep this section judgment-focused. Do not provide phased roadmap steps unless requested.
+
+### Ballpark Impact Estimate requirements
+- Must include explicit usage assumptions.
+- If usage is not user-provided, default to `100000` relevant executions/day and label as arbitrary baseline.
+- Must provide:
+  - Per-call gas estimate delta (range if uncertain).
+  - Aggregate daily and monthly gas estimate delta from stated assumptions.
+  - Execution-speed or throughput estimate (percent and/or x-multiple).
+  - Confidence level and caveat notes.
+- Estimates must be directional and approximate; do not present as precise measurements.
 
 ## JSON appendix
 ```json
@@ -69,6 +80,43 @@ The skill response should include a human-readable Markdown report followed by a
         "risk_if_wrong": "string"
       }
     ]
+  },
+  "ballpark_estimate": {
+    "usage_assumptions": {
+      "provided_by_user": false,
+      "executions_per_day": 100000,
+      "notes": "string"
+    },
+    "gas": {
+      "per_call_delta_gas": {
+        "min": 0,
+        "max": 0
+      },
+      "per_call_percent_delta": {
+        "min_percent": 0,
+        "max_percent": 0
+      },
+      "daily_delta_gas": {
+        "min": 0,
+        "max": 0
+      },
+      "monthly_delta_gas": {
+        "min": 0,
+        "max": 0
+      }
+    },
+    "performance": {
+      "speedup_percent": {
+        "min_percent": 0,
+        "max_percent": 0
+      },
+      "throughput_multiplier": {
+        "min_x": 1.0,
+        "max_x": 1.0
+      }
+    },
+    "confidence": "high | medium | low",
+    "basis": ["string"]
   },
   "contract": {
     "name": "string",

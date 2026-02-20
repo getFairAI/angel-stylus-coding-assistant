@@ -11,6 +11,7 @@ Use this skill when a user asks whether a Solidity contract (or codebase) is a g
 - Produces an upside-first candidacy score (`0-100`) with explicit caveats.
 - Compares contracts against a concrete list of "good candidate" and "bad candidate" qualities.
 - Uses independent and anecdotal ecosystem evidence as first-class inputs.
+- Adds ballpark impact estimates for gas savings and/or execution-speed improvements using explicit assumptions.
 - Flags hard blockers and gives mitigation paths.
 - Returns line-referenced findings when source code is available.
 - Optimizes for partial migration decisions (what to port now vs what should remain in Solidity).
@@ -20,6 +21,7 @@ Use this skill when a user asks whether a Solidity contract (or codebase) is a g
 - One Solidity contract file, a set of Solidity files, or a GitHub repository URL.
 - Optional architecture notes (proxy model, upgrade path, critical invariants).
 - Optional performance context (high-traffic paths, current bottlenecks).
+- Optional usage volume assumptions (calls/day, calls/month). If missing, use a clearly labeled arbitrary baseline.
 
 If the user supplies a full codebase, default to map-only triage and recommend deep-dive targets.
 
@@ -106,6 +108,12 @@ At minimum include:
 - `high_stylus_benefit`
 - `medium_stylus_benefit`
 - `low_stylus_impact`
+- Ballpark impact estimate section with explicit assumptions:
+  - If user does not provide usage volume, assume `100000` relevant executions/day and state that this is arbitrary.
+  - Provide per-call gas delta estimate (range and percent when possible).
+  - Provide aggregate daily/monthly gas delta estimate based on stated assumptions.
+  - Provide execution-speed or throughput improvement estimate (range, percent, or x-multiple).
+  - Label confidence (`high|medium|low`) and why.
 - Candidate summary.
 - Score breakdown.
 - Evidence-backed good/bad signal findings.
