@@ -1,4 +1,4 @@
-# sift-stylus
+# sift-stylus-skills-installer
 
 Installs the two Sift Codex skills:
 - `sift-stylus-porting-auditor`
@@ -7,14 +7,14 @@ Installs the two Sift Codex skills:
 ## Quick install (both)
 
 ```bash
-npx sift-stylus \
+npx sift-stylus-skills-installer \
   --repo getFairAI/angel-stylus-coding-assistant
 ```
 
 ## Install one skill only
 
 ```bash
-npx sift-stylus \
+npx sift-stylus-skills-installer \
   --repo getFairAI/angel-stylus-coding-assistant \
   --skills sift-stylus-research
 ```

@@ -137,14 +137,14 @@ This repo contains two Codex skills under `skills/`:
 Install both from one CLI command:
 
 ```bash
-npx sift-stylus \
+npx sift-stylus-skills-installer \
   --repo getFairAI/angel-stylus-coding-assistant
 ```
 
 Install one skill only:
 
 ```bash
-npx sift-stylus \
+npx sift-stylus-skills-installer \
   --repo getFairAI/angel-stylus-coding-assistant \
   --skills sift-stylus-research
 ```

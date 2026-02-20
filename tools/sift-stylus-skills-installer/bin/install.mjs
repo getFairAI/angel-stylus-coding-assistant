@@ -9,7 +9,7 @@ const ALL_SKILLS = ["sift-stylus-porting-auditor", "sift-stylus-research"];
 
 function usage() {
   console.log(`Usage:
-  sift-stylus --repo <owner/repo> [options]
+  sift-stylus-skills-install --repo <owner/repo> [options]
 
 Options:
   --repo <owner/repo>          GitHub repository containing skills (required)
@@ -21,10 +21,10 @@ Options:
   --help                       Show this help
 
 Examples:
-  npx sift-stylus \\
+  npx sift-stylus-skills-installer \\
     --repo getFairAI/angel-stylus-coding-assistant
 
-  npx sift-stylus \\
+  npx sift-stylus-skills-installer \\
     --repo getFairAI/angel-stylus-coding-assistant \\
     --skills sift-stylus-research
 `);
