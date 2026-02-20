@@ -1,9 +1,10 @@
 {
-  "name": "sift-stylus-skills-installer",
+  "name": "sift-stylus",
   "version": "0.1.0",
   "description": "npx installer for sift Stylus Codex skills",
   "type": "module",
   "bin": {
+    "sift-stylus": "bin/install.mjs",
     "sift-stylus-skills-installer": "bin/install.mjs",
     "sift-stylus-skills-install": "bin/install.mjs"
   },

@@ -3,8 +3,8 @@
   "packages": {
     "tools/sift-stylus-skills-installer": {
       "release-type": "node",
-      "package-name": "sift-stylus-skills-installer",
-      "component": "sift-stylus-skills-installer"
+      "package-name": "sift-stylus",
+      "component": "sift-stylus"
     }
   }
 }
