@@ -4,7 +4,7 @@
 
 This backend now provides two responsibilities:
 
-1. Stylus retrieval (`/stylus-chat`) with references-first context.
+1. Skill-scoped Stylus retrieval (`/skills/{skill_id}/search`) with references-first context.
 2. Server-side OpenRouter proxy (`/openrouter/chat/completions`) so frontend clients never hold provider API keys.
 
 ## Request Flow
@@ -24,8 +24,13 @@ This backend now provides two responsibilities:
 ## Endpoints
 
 - `GET /health`
-- `POST /stylus-chat`
+- `GET /skills`
+- `POST /skills/{skill_id}/search`
 - `POST /openrouter/chat/completions`
+
+Compatibility aliases:
+- `POST /stylus-chat` -> research skill
+- `POST /stylus-porting-audit` -> porting auditor skill
 
 ## Environment Variables
 

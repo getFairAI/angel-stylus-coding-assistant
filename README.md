@@ -14,8 +14,13 @@ It indexes official docs, Stylus blog posts, and curated community repos, then r
 ## API
 
 - `GET /health`
-- `POST /stylus-chat`
+- `GET /skills`
+- `POST /skills/{skill_id}/search`
 - `POST /openrouter/chat/completions` (server-side OpenRouter proxy; keeps API key off the frontend)
+
+Compatibility aliases:
+- `POST /stylus-chat` -> research skill
+- `POST /stylus-porting-audit` -> porting auditor skill
 
 Request:
 
@@ -91,7 +96,7 @@ This runs:
 - Python compile check
 - `pytest` suite
 - health probe
-- `/stylus-chat` smoke request
+- `/skills/{skill_id}/search` smoke request
 
 ## Docker
 
@@ -121,6 +126,32 @@ curl -X POST http://localhost:8001/openrouter/chat/completions \
 
 - `src/run_all_data_ingestions.py` now rebuilds Chroma after ingestion.
 - `src/debug_chroma_query.py` is a manual utility, not a pytest module.
+
+## Codex Skills
+
+This repo contains two Codex skills under `skills/`:
+
+- `sift-stylus-porting-auditor`
+- `sift-stylus-research`
+
+Install both from one CLI command:
+
+```bash
+npx sift-stylus-skills-installer \
+  --repo getFairAI/angel-stylus-coding-assistant
+```
+
+Install one skill only:
+
+```bash
+npx sift-stylus-skills-installer \
+  --repo getFairAI/angel-stylus-coding-assistant \
+  --skills sift-stylus-research
+```
+
+Installer package source:
+
+- `tools/sift-stylus-skills-installer/`
 
 ## Additional Docs
 

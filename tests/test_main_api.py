@@ -16,11 +16,30 @@ def test_stylus_chat_validates_empty_prompt():
     assert response.status_code == 422
 
 
+def test_skills_index_lists_supported_skills():
+    client = TestClient(app_module.app)
+    response = client.get("/skills")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "skills" in payload
+    assert any(item["id"] == "sift-stylus-research" for item in payload["skills"])
+    assert any(item["id"] == "sift-stylus-porting-auditor" for item in payload["skills"])
+
+
+def test_skill_search_rejects_unsupported_skill():
+    client = TestClient(app_module.app)
+    response = client.post("/skills/not-a-skill/search", json={"prompt": "hello"})
+
+    assert response.status_code == 404
+    assert "Unsupported skill" in response.json()["detail"]
+
+
 def test_stylus_chat_handles_internal_error_with_safe_response(monkeypatch):
     def raise_error(_prompt):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(app_module, "retrieve_stylus_context", raise_error)
+    monkeypatch.setattr(app_module, "run_skill_search", lambda _skill_id, _prompt: raise_error(_prompt))
     client = TestClient(app_module.app)
     response = client.post("/stylus-chat", json={"prompt": "test"})
 
@@ -30,6 +49,20 @@ def test_stylus_chat_handles_internal_error_with_safe_response(monkeypatch):
     assert payload["reason"] == "Retrieval failed due to an internal error."
     assert payload["references"] == []
     assert payload["agent_guidance"]["behavior"] == "references_first"
+    assert payload["skill"] == "sift-stylus-research"
+
+
+def test_porting_audit_alias_uses_porting_skill(monkeypatch):
+    monkeypatch.setattr(
+        app_module,
+        "run_skill_search",
+        lambda skill_id, _prompt: {"found": True, "context": "ok", "references": [], "skill": skill_id},
+    )
+    client = TestClient(app_module.app)
+    response = client.post("/stylus-porting-audit", json={"prompt": "test"})
+
+    assert response.status_code == 200
+    assert response.json()["skill"] == "sift-stylus-porting-auditor"
 
 
 def test_openrouter_proxy_requires_backend_api_key(monkeypatch):

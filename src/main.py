@@ -8,8 +8,14 @@ import time
 import os
 import requests
 
-from retrieve_chroma_docs import retrieve_stylus_context
 from basic_logs import write_request_log
+from skill_registry import (
+    SKILL_ID_PORTING_AUDITOR,
+    SKILL_ID_RESEARCH,
+    get_skill,
+    list_skills,
+    run_skill_search,
+)
 
 app = FastAPI()
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -53,30 +59,52 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/stylus-chat")
-def stylus_chat(request: StylusRequest):
+@app.get("/skills")
+def skills_index():
+    return {"skills": list_skills()}
+
+
+def execute_skill_search(skill_id: str, request: StylusRequest):
     preview = prompt_preview(request.prompt)
-    write_request_log(f"User started a request | Prompt preview: {preview}")
+    write_request_log(f"User started a skill request | skill={skill_id} | Prompt preview: {preview}")
     start_time = time.time()
 
     try:
-        result = retrieve_stylus_context(request.prompt)
+        result = run_skill_search(skill_id, request.prompt)
     except Exception as exc:
-        write_request_log(f"[error] Retrieval failed | {type(exc).__name__}: {exc}")
+        write_request_log(f"[error] Skill retrieval failed | skill={skill_id} | {type(exc).__name__}: {exc}")
         result = {
             "found": False,
             "context": "",
             "reason": "Retrieval failed due to an internal error.",
             "agent_guidance": DEFAULT_AGENT_GUIDANCE,
             "references": [],
+            "skill": skill_id,
         }
 
     duration = round(time.time() - start_time, 2)
     preview = (result.get("context") or result.get("reason") or "")[:80]
-    write_request_log(f"✅ Finished retrieval | Time: {duration}s | Preview: {preview}...")
+    write_request_log(f"✅ Finished skill retrieval | skill={skill_id} | Time: {duration}s | Preview: {preview}...")
 
     # Return retrieval payload (MCP/IDE/LLM will decide what to do with it)
     return result
+
+
+@app.post("/skills/{skill_id}/search")
+def skill_search(skill_id: str, request: StylusRequest):
+    if not get_skill(skill_id):
+        raise HTTPException(status_code=404, detail=f"Unsupported skill '{skill_id}'.")
+    return execute_skill_search(skill_id, request)
+
+
+@app.post("/stylus-chat")
+def stylus_chat(request: StylusRequest):
+    return execute_skill_search(SKILL_ID_RESEARCH, request)
+
+
+@app.post("/stylus-porting-audit")
+def stylus_porting_audit(request: StylusRequest):
+    return execute_skill_search(SKILL_ID_PORTING_AUDITOR, request)
 
 
 @app.post("/openrouter/chat/completions")
