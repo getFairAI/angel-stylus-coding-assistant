@@ -4,7 +4,11 @@
   "description": "npx installer for sift Stylus Codex skills",
   "type": "module",
   "bin": {
+    "sift-stylus-skills-installer": "bin/install.mjs",
     "sift-stylus-skills-install": "bin/install.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "bin",
