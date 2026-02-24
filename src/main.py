@@ -7,6 +7,9 @@ import uvicorn
 import time
 import os
 import requests
+import dotenv
+
+dotenv.load_dotenv()
 
 from basic_logs import write_request_log
 from skill_registry import (
@@ -88,7 +91,6 @@ def execute_skill_search(skill_id: str, request: StylusRequest):
 
     # Return retrieval payload (MCP/IDE/LLM will decide what to do with it)
     return result
-
 
 @app.post("/skills/{skill_id}/search")
 def skill_search(skill_id: str, request: StylusRequest):
