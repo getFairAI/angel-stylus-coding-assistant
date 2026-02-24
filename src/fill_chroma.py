@@ -1,8 +1,7 @@
 import json
 import os
 import chromadb
-from chromadb import Documents, EmbeddingFunction, Embeddings
-import ollama
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 
 DATA_DIR = "data"
@@ -27,14 +26,6 @@ def discover_json_files(data_dir: str):
     return sorted(files)
 
 
-class OllamaEmbeddingFunction(EmbeddingFunction):
-    def __call__(self, input: Documents) -> Embeddings:
-        return [
-            ollama.embeddings(model="nomic-embed-text", prompt=text)["embedding"]
-            for text in input
-        ]
-
-
 # ----------------------------------------------------
 # MAIN FUNCTION (callable)
 # ----------------------------------------------------
@@ -52,7 +43,7 @@ def fill_chroma():
     # Recreate collection
     collection = chroma_client.get_or_create_collection(
         name=COLLECTION_NAME,
-        embedding_function=OllamaEmbeddingFunction()
+        embedding_function=DefaultEmbeddingFunction(),
     )
 
     json_files_path = discover_json_files(DATA_DIR)

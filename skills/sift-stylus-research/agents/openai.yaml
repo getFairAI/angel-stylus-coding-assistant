@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sift Stylus Research"
+  short_description: "Research Stylus topics with MCP-backed references"
+  default_prompt: "Use $sift-stylus-research to answer this Stylus question from the hosted MCP retrieval backend and return references-first findings."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sift Stylus Porting Auditor"
+  short_description: "Audit Solidity candidates for Stylus porting upside"
+  default_prompt: "Use $sift-stylus-porting-auditor to judge whether each contract has high Stylus benefit or low impact in a hybrid Solidity+Stylus architecture, and include a ballpark estimate of gas savings and/or execution speed impact with explicit usage assumptions."

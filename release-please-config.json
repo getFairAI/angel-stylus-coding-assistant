@@ -1,0 +1,10 @@
+{
+  "include-component-in-tag": true,
+  "packages": {
+    "tools/sift-stylus-skills-installer": {
+      "release-type": "node",
+      "package-name": "sift-stylus",
+      "component": "sift-stylus"
+    }
+  }
+}
