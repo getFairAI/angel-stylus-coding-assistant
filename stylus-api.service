@@ -1,0 +1,15 @@
+[Unit]
+Description=Stylus Retrieval API
+After=network.target
+
+[Service]
+Type=simple
+User=fair-node
+WorkingDirectory=/home/fair-node/Desktop/wow-stylus
+EnvironmentFile=/home/fair-node/Desktop/wow-stylus/.env
+ExecStart=/home/fair-node/Desktop/wow-stylus/stylys-env/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8099
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

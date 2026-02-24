@@ -8,6 +8,9 @@ import time
 import os
 import requests
 from typing import Optional
+import dotenv
+
+dotenv.load_dotenv()
 
 from augmentation_contract import (
     build_porting_augmentation_contract,
@@ -116,7 +119,6 @@ def execute_skill_search(skill_id: str, prompt: str, augmentation: object = None
 
     # Return retrieval payload (MCP/IDE/LLM will decide what to do with it)
     return result
-
 
 @app.post("/skills/{skill_id}/search")
 def skill_search(skill_id: str, request: SkillSearchRequest):
