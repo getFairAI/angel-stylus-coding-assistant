@@ -213,3 +213,86 @@ def test_llm_augmentation_contract_shape_and_rendering():
     assert "recommended_carveouts" in contract["required_output"]
     assert contract["validation_rules"]["on_validation_failure"] == "fallback_static_only"
     assert "LLM augmentation contract:" in rendered
+
+
+def test_porting_skill_applies_augmentation_and_returns_augmented_analysis(monkeypatch):
+    monkeypatch.setattr(
+        skill_registry,
+        "retrieve_stylus_context",
+        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+    )
+    monkeypatch.setattr(
+        skill_registry,
+        "analyze_contract_target",
+        lambda _prompt: {
+            "mode": "local_path",
+            "target": "./contracts",
+            "aggregate": {"files": 2, "contracts": 2, "hints": {"final": 60}},
+            "high_targets": [{"path": "contracts/ComputeHeavy.sol", "hint_score": 81}],
+            "low_targets": [{"path": "contracts/Router.sol", "hint_score": 39}],
+            "summary": "summary",
+            "references": [],
+        },
+    )
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_PORTING_AUDITOR,
+        "Analyze ./contracts",
+        augmentation={
+            "additional_good_fit_signals": [
+                {
+                    "contract": "contracts/Router.sol",
+                    "signal": "compute-heavy subpath identified",
+                    "confidence": "medium",
+                    "citations": ["https://example.com/router"],
+                }
+            ],
+            "additional_bad_fit_signals": [],
+            "recommended_carveouts": [],
+            "confidence": "medium",
+            "citations": ["https://example.com/summary"],
+        },
+    )
+
+    assert payload["llm_augmentation"]["mode"] == "bounded_second_pass"
+    assert payload["augmentation_comparison"]["mode"] == "bounded_second_pass"
+    assert payload["augmentation_comparison"]["quality_delta"]["promotions"] == 1
+
+    augmented_paths = [
+        str(item.get("path") or "")
+        for item in payload["codebase_analysis_augmented"]["high_targets"]
+    ]
+    assert "contracts/Router.sol" in augmented_paths
+    assert "Augmentation application: promotions=1, demotions=0" in payload["context"]
+
+
+def test_porting_skill_augmentation_fallback_keeps_static_analysis(monkeypatch):
+    monkeypatch.setattr(
+        skill_registry,
+        "retrieve_stylus_context",
+        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+    )
+    monkeypatch.setattr(
+        skill_registry,
+        "analyze_contract_target",
+        lambda _prompt: {
+            "mode": "local_path",
+            "target": "./contracts",
+            "aggregate": {"files": 1, "contracts": 1, "hints": {"final": 62}},
+            "high_targets": [{"path": "contracts/ComputeHeavy.sol", "hint_score": 81}],
+            "low_targets": [],
+            "summary": "summary",
+            "references": [],
+        },
+    )
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_PORTING_AUDITOR,
+        "Analyze ./contracts",
+        augmentation="invalid-augmentation",
+    )
+
+    assert payload["llm_augmentation"]["mode"] == "static_only_fallback"
+    assert payload["augmentation_comparison"]["mode"] == "static_only"
+    assert "codebase_analysis_augmented" not in payload
+    assert "static-only fallback" in payload["context"]

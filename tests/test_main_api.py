@@ -65,6 +65,37 @@ def test_porting_audit_alias_uses_porting_skill(monkeypatch):
     assert response.json()["skill"] == "sift-stylus-porting-auditor"
 
 
+def test_porting_audit_passes_optional_augmentation_to_skill_search(monkeypatch):
+    captured = {}
+
+    def fake_run(skill_id, prompt, augmentation=None):
+        captured["skill_id"] = skill_id
+        captured["prompt"] = prompt
+        captured["augmentation"] = augmentation
+        return {"found": True, "context": "ok", "references": [], "skill": skill_id}
+
+    monkeypatch.setattr(app_module, "run_skill_search", fake_run)
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/stylus-porting-audit",
+        json={
+            "prompt": "Analyze ./contracts",
+            "augmentation": {
+                "additional_good_fit_signals": [],
+                "additional_bad_fit_signals": [],
+                "recommended_carveouts": [],
+                "confidence": "low",
+                "citations": ["https://example.com"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["skill_id"] == "sift-stylus-porting-auditor"
+    assert captured["prompt"] == "Analyze ./contracts"
+    assert isinstance(captured["augmentation"], dict)
+
+
 def test_validate_porting_augmentation_endpoint_fallback():
     client = TestClient(app_module.app)
     response = client.post(

@@ -7,6 +7,7 @@ import uvicorn
 import time
 import os
 import requests
+from typing import Optional
 
 from augmentation_contract import (
     build_porting_augmentation_contract,
@@ -53,6 +54,7 @@ app.add_middleware(
 
 class StylusRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
+    augmentation: Optional[object] = None
 
 
 class PortingAugmentationValidationRequest(BaseModel):
@@ -84,7 +86,10 @@ def execute_skill_search(skill_id: str, request: StylusRequest):
     start_time = time.time()
 
     try:
-        result = run_skill_search(skill_id, request.prompt)
+        if request.augmentation is None:
+            result = run_skill_search(skill_id, request.prompt)
+        else:
+            result = run_skill_search(skill_id, request.prompt, request.augmentation)
     except Exception as exc:
         write_request_log(f"[error] Skill retrieval failed | skill={skill_id} | {type(exc).__name__}: {exc}")
         result = {

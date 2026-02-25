@@ -117,8 +117,7 @@ Improve the quality and usefulness of Stylus porting-candidate recommendations w
 ## Phase 8: Acceptance Gates
 1. `static+augmentation` must improve candidate quality on labeled fixtures vs static-only baseline.
 2. No increase in uncited or schema-invalid claims.
-3. Latency/cost budgets must remain within agreed thresholds.
-4. If gates fail, default to static-only until fixes land.
+3. If gates fail, default to static-only until fixes land.
 
 ## Deliverables
 1. Analyzer refactor with a single improved scoring model (`v2`).

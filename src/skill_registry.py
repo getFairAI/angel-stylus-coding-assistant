@@ -6,7 +6,9 @@ from typing import Callable, Dict, List, Optional
 
 from augmentation_contract import (
     build_porting_augmentation_contract,
+    compare_porting_analysis_with_augmentation,
     render_porting_augmentation_contract,
+    validate_porting_augmentation,
 )
 from contract_analysis import analyze_contract_target
 from retrieve_chroma_docs import retrieve_stylus_context
@@ -236,6 +238,28 @@ def _render_analysis_action_paths(action_paths: list) -> str:
     return "\n".join(lines)
 
 
+def _build_augmentation_summary(validated: dict, comparison: dict) -> str:
+    if not isinstance(validated, dict):
+        return ""
+
+    mode = str(validated.get("mode") or "").strip()
+    if mode != "bounded_second_pass":
+        validation = validated.get("validation") or {}
+        reason = str(validation.get("reason") or "augmentation_not_applied").strip()
+        return f"Augmentation application: static-only fallback ({reason})."
+
+    delta = comparison.get("quality_delta") if isinstance(comparison, dict) else {}
+    promotions = int(delta.get("promotions") or 0)
+    demotions = int(delta.get("demotions") or 0)
+    added = delta.get("high_targets_added") or []
+    added_items = [str(item).strip() for item in added if str(item).strip()] if isinstance(added, list) else []
+
+    line = f"Augmentation application: promotions={promotions}, demotions={demotions}"
+    if added_items:
+        line += f", added_high_targets={', '.join(added_items[:3])}"
+    return line
+
+
 def _build_llm_augmentation_contract() -> dict:
     return build_porting_augmentation_contract()
 
@@ -286,7 +310,7 @@ def list_skills() -> List[dict]:
     ]
 
 
-def run_skill_search(skill_id: str, prompt: str) -> dict:
+def run_skill_search(skill_id: str, prompt: str, augmentation: object = None) -> dict:
     skill = get_skill(skill_id)
     if skill is None:
         raise KeyError(skill_id)
@@ -306,6 +330,7 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
             brief = ""
             action_paths_text = ""
             summary = ""
+            augmentation_summary = ""
             if isinstance(analysis, dict):
                 payload["codebase_analysis"] = analysis
                 brief = _build_analysis_brief(analysis)
@@ -345,8 +370,44 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
                                 lines.append(f"- [{ref['title']}]({ref['url']})")
                             payload["references_markdown"] = "\n".join(lines)
 
+            if augmentation is not None:
+                validated_augmentation = validate_porting_augmentation(
+                    augmentation,
+                    contract=augmentation_contract,
+                )
+                payload["llm_augmentation"] = validated_augmentation
+                augmentation_comparison = compare_porting_analysis_with_augmentation(
+                    analysis,
+                    validated_augmentation,
+                    contract=augmentation_contract,
+                )
+                payload["augmentation_comparison"] = augmentation_comparison
+                augmentation_summary = _build_augmentation_summary(
+                    validated_augmentation,
+                    augmentation_comparison,
+                )
+
+                if isinstance(analysis, dict) and isinstance(augmentation_comparison, dict):
+                    if str(augmentation_comparison.get("mode") or "") == "bounded_second_pass":
+                        augmented_section = augmentation_comparison.get("augmented") or {}
+                        if isinstance(augmented_section, dict):
+                            augmented_analysis = dict(analysis)
+                            high_targets = augmented_section.get("high_targets")
+                            low_targets = augmented_section.get("low_targets")
+                            if isinstance(high_targets, list):
+                                augmented_analysis["high_targets"] = high_targets
+                            if isinstance(low_targets, list):
+                                augmented_analysis["low_targets"] = low_targets
+                            augmented_analysis["augmentation_quality_delta"] = (
+                                augmentation_comparison.get("quality_delta") or {}
+                            )
+                            augmented_analysis["augmentation_warnings"] = list(
+                                augmented_section.get("warnings") or []
+                            )
+                            payload["codebase_analysis_augmented"] = augmented_analysis
+
             analysis_context = "\n\n".join(
-                part for part in [brief, action_paths_text, augmentation_text, summary] if part
+                part for part in [brief, action_paths_text, augmentation_text, augmentation_summary, summary] if part
             ).strip()
             if analysis_context:
                 base_context = str(payload.get("context") or "").strip()
