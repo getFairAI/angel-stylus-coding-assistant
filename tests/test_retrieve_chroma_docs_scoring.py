@@ -90,6 +90,82 @@ def test_collect_references_adds_docs_root_from_category_fallback():
     assert "https://docs.arbitrum.io/stylus/" in urls
 
 
+def test_collect_references_porting_mode_keeps_primary_urls_under_inline_flood():
+    ranked_hits = [
+        {
+            "text": (
+                "- [A](https://github.com/example/a)\n"
+                "- [B](https://github.com/example/b)\n"
+                "- [C](https://github.com/example/c)\n"
+                "- [D](https://github.com/example/d)\n"
+                "- [E](https://github.com/example/e)\n"
+            ),
+            "metadata": {
+                "source": "github_readme",
+                "title": "Examples",
+                "section": "Examples",
+                "repo": "OffchainLabs/awesome-stylus",
+                "url": "https://github.com/OffchainLabs/awesome-stylus/",
+            },
+        },
+        {
+            "text": "Uniswap hooks writeup.",
+            "metadata": {
+                "source": "stylus_blog",
+                "title": "Unlocking DeFi Potential: How Stylus Fuels Uniswap Hook Innovation",
+                "section": "Case Studies",
+                "url": "https://blog.arbitrum.io/uniswap-stylus-hooks/",
+            },
+        },
+    ]
+
+    refs = retrieval.collect_references(
+        ranked_hits,
+        max_items=6,
+        include_research_contract=False,
+    )
+    urls = {ref["url"] for ref in refs}
+
+    assert "https://blog.arbitrum.io/uniswap-stylus-hooks/" in urls
+
+
+def test_collect_references_porting_mode_skips_legacy_examples_inline_links():
+    ranked_hits = [
+        {
+            "text": (
+                "- [Zk-sunade](https://github.com/supernovahs/zk-sunade)\n"
+                "- [Stylus Proxy](https://github.com/byteZorvin/stylus-proxy)\n"
+            ),
+            "metadata": {
+                "source": "github_readme",
+                "title": "Examples / Examples built with cargo-stylus v0.2.x",
+                "section": "Examples",
+                "subsection": "Examples built with cargo-stylus v0.2.x",
+                "repo": "OffchainLabs/awesome-stylus",
+                "url": "https://github.com/OffchainLabs/awesome-stylus/",
+            },
+        }
+    ]
+
+    porting_refs = retrieval.collect_references(
+        ranked_hits,
+        max_items=20,
+        include_research_contract=False,
+    )
+    research_refs = retrieval.collect_references(
+        ranked_hits,
+        max_items=20,
+        include_research_contract=True,
+    )
+
+    porting_urls = {ref["url"] for ref in porting_refs}
+    research_urls = {ref["url"] for ref in research_refs}
+
+    assert "https://github.com/OffchainLabs/awesome-stylus/" in porting_urls
+    assert "https://github.com/supernovahs/zk-sunade" not in porting_urls
+    assert "https://github.com/supernovahs/zk-sunade" in research_urls
+
+
 def test_retrieve_context_compat_flag_and_reference_helpers(monkeypatch):
     hits = [
         {
@@ -120,3 +196,48 @@ def test_retrieve_context_compat_flag_and_reference_helpers(monkeypatch):
     assert result["context"].startswith("Top references:")
     assert "References:" in result["references_markdown"]
     assert result["agent_guidance"]["behavior"] == "references_first"
+
+
+def test_retrieve_context_porting_mode_adds_benchmark_and_relevant_blog(monkeypatch):
+    hits = [
+        {
+            "text": (
+                "Source: GitHub README\n"
+                "Section: Examples\n"
+                "- [Alpha](https://github.com/example/alpha)\n"
+                "- [Beta](https://github.com/example/beta)\n"
+                "- [Gamma](https://github.com/example/gamma)\n"
+                "- [Delta](https://github.com/example/delta)\n"
+            ),
+            "metadata": {
+                "source": "github_readme",
+                "repo": "OffchainLabs/awesome-stylus/",
+                "section": "Examples",
+                "title": "Examples",
+                "url": "https://github.com/OffchainLabs/awesome-stylus/",
+            },
+            "distance": 0.05,
+        },
+        {
+            "text": "Source: Stylus Blog\nUniswap hooks analysis.",
+            "metadata": {
+                "source": "stylus_blog",
+                "section": "Case Studies",
+                "title": "Unlocking DeFi Potential: How Stylus Fuels Uniswap Hook Innovation",
+                "url": "https://blog.arbitrum.io/uniswap-stylus-hooks/",
+            },
+            "distance": 0.06,
+        },
+    ]
+    monkeypatch.setattr(retrieval, "get_chroma_documents", lambda _prompt: hits)
+
+    result = retrieval.retrieve_stylus_context(
+        "Analyze https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol and return a porting verdict.",
+        include_research_contract=False,
+    )
+
+    urls = [ref["url"] for ref in result["references"]]
+    top_urls = urls[:10]
+
+    assert "https://blog.arbitrum.io/uniswap-stylus-hooks/" in top_urls
+    assert "https://github.com/LimeChain/stylus-benchmark" in urls
