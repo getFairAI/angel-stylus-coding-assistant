@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 COMMENT_RE = re.compile(r"//.*?$|/\*.*?\*/", re.MULTILINE | re.DOTALL)
 
@@ -45,6 +46,28 @@ PATTERNS = {
 }
 
 IGNORE_DIRS = {"node_modules", "dist", "build", "out", "artifacts", ".git"}
+NON_PRODUCTION_DIRS = {
+    "test",
+    "tests",
+    "mock",
+    "mocks",
+    "example",
+    "examples",
+    "script",
+    "scripts",
+    "audit",
+    "audits",
+    "crytic",
+}
+DEFAULT_SCORING_VERSION = "v2"
+VALID_SCORING_VERSIONS = {"v1", "v2"}
+
+INTERFACE_CAST_CALL_RE = re.compile(
+    r"\bI[A-Za-z0-9_]*\s*\([^)]*\)\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*\("
+)
+INTERFACE_TYPED_VAR_RE = re.compile(
+    r"\bI[A-Za-z0-9_]*\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
 
 
 @dataclass
@@ -117,7 +140,80 @@ def detect_archetype(
     return "isolated-utility-or-mixed"
 
 
-def analyze_file(path: Path, text: str) -> FileSignals:
+def resolve_scoring_version(value: Optional[str]) -> str:
+    requested = (value or os.getenv("STYLUS_PORTING_SCORING_VERSION") or DEFAULT_SCORING_VERSION).strip().lower()
+    if requested in VALID_SCORING_VERSIONS:
+        return requested
+    return DEFAULT_SCORING_VERSION
+
+
+def count_interface_calls(text: str) -> int:
+    calls = len(INTERFACE_CAST_CALL_RE.findall(text))
+    for var_name in sorted(set(INTERFACE_TYPED_VAR_RE.findall(text))):
+        calls += len(re.findall(rf"\b{re.escape(var_name)}\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*\(", text))
+    return calls
+
+
+def _score_hints(
+    *,
+    loops: int,
+    hash_ops: int,
+    crypto_terms: int,
+    abi_ops: int,
+    mapping_decl: int,
+    storage_kw: int,
+    imports: int,
+    inheritance_edges: int,
+    ext_calls: int,
+    interface_calls: int,
+    value_calls: int,
+    assembly: int,
+    delegatecalls: int,
+    proxy_terms: int,
+    scoring_version: str,
+) -> tuple[int, int, int]:
+    compute_raw = (loops * 3.0) + (hash_ops * 5.0) + (crypto_terms * 6.0) + (abi_ops * 1.5)
+    storage_raw = (mapping_decl * 3.5) + (storage_kw * 1.0)
+
+    if scoring_version == "v1":
+        coupling_raw = (ext_calls * 2.5) + (inheritance_edges * 2.0) + (imports * 1.5)
+        portability_penalty = (assembly * 14.0) + (delegatecalls * 10.0) + (proxy_terms * 2.5)
+
+        upside_score_hint = clamp_score(50 + (compute_raw * 2.2) - (storage_raw * 0.9) - (coupling_raw * 0.8))
+        portability_score_hint = clamp_score(100 - portability_penalty - (inheritance_edges * 1.5))
+        integration_score_hint = clamp_score(100 - (coupling_raw * 4.2) - (value_calls * 4.0))
+        return upside_score_hint, portability_score_hint, integration_score_hint
+
+    # v2: reduce import-driven false negatives and prioritize true boundary/call complexity.
+    coupling_raw = (
+        (ext_calls * 3.5)
+        + (interface_calls * 3.0)
+        + (inheritance_edges * 1.5)
+        + (value_calls * 2.0)
+        + (imports * 0.2)
+    )
+    portability_penalty = (
+        (assembly * 16.0)
+        + (delegatecalls * 12.0)
+        + (proxy_terms * 3.0)
+        + (inheritance_edges * 1.2)
+    )
+
+    upside_score_hint = clamp_score(48 + (compute_raw * 2.1) - (storage_raw * 0.85) - (coupling_raw * 0.45))
+    portability_score_hint = clamp_score(100 - portability_penalty)
+    integration_score_hint = clamp_score(
+        100
+        - (ext_calls * 7.0)
+        - (interface_calls * 5.5)
+        - (value_calls * 6.0)
+        - (delegatecalls * 10.0)
+        - (proxy_terms * 2.2)
+        - (inheritance_edges * 1.5)
+    )
+    return upside_score_hint, portability_score_hint, integration_score_hint
+
+
+def analyze_file(path: Path, text: str, scoring_version: str = DEFAULT_SCORING_VERSION) -> FileSignals:
     cleaned = strip_comments(text)
     lines = [line for line in cleaned.splitlines() if line.strip()]
 
@@ -135,19 +231,29 @@ def analyze_file(path: Path, text: str) -> FileSignals:
     imports = count("imports", cleaned)
     inheritance_edges = count_inheritance_edges(cleaned)
     ext_calls = count("ext_calls", cleaned)
+    interface_calls = count_interface_calls(cleaned)
     value_calls = count("value_calls", cleaned)
     delegatecalls = len(re.findall(r"\.\s*delegatecall\s*\(", cleaned))
     proxy_terms = count("proxy_terms", cleaned)
     token_terms = count("token_terms", cleaned)
 
-    compute_raw = (loops * 3.0) + (hash_ops * 5.0) + (crypto_terms * 6.0) + (abi_ops * 1.5)
-    storage_raw = (mapping_decl * 3.5) + (storage_kw * 1.0)
-    coupling_raw = (ext_calls * 2.5) + (inheritance_edges * 2.0) + (imports * 1.5)
-    portability_penalty = (assembly * 14.0) + (delegatecalls * 10.0) + (proxy_terms * 2.5)
-
-    upside_score_hint = clamp_score(50 + (compute_raw * 2.2) - (storage_raw * 0.9) - (coupling_raw * 0.8))
-    portability_score_hint = clamp_score(100 - portability_penalty - (inheritance_edges * 1.5))
-    integration_score_hint = clamp_score(100 - (coupling_raw * 4.2) - (value_calls * 4.0))
+    upside_score_hint, portability_score_hint, integration_score_hint = _score_hints(
+        loops=loops,
+        hash_ops=hash_ops,
+        crypto_terms=crypto_terms,
+        abi_ops=abi_ops,
+        mapping_decl=mapping_decl,
+        storage_kw=storage_kw,
+        imports=imports,
+        inheritance_edges=inheritance_edges,
+        ext_calls=ext_calls,
+        interface_calls=interface_calls,
+        value_calls=value_calls,
+        assembly=assembly,
+        delegatecalls=delegatecalls,
+        proxy_terms=proxy_terms,
+        scoring_version=scoring_version,
+    )
 
     archetype_hint = detect_archetype(
         hash_ops=hash_ops,
@@ -173,6 +279,8 @@ def analyze_file(path: Path, text: str) -> FileSignals:
         risk_signals.append("inline-assembly-yul-dependence")
     if delegatecalls > 0 or proxy_terms >= 3:
         risk_signals.append("proxy-upgrade-complexity")
+    if (ext_calls + interface_calls) >= 4:
+        risk_signals.append("high-external-call-fanout")
     if integration_score_hint < 45:
         risk_signals.append("high-integration-coupling")
     if token_terms >= 2 and upside_score_hint < 65:
@@ -207,10 +315,12 @@ def analyze_file(path: Path, text: str) -> FileSignals:
     )
 
 
-def collect_solidity_files(target: Path) -> List[Path]:
+def collect_solidity_files(target: Path, include_non_production: bool = False) -> List[Path]:
     if target.is_file() and target.suffix == ".sol":
         return [target]
 
+    production_files: List[Path] = []
+    fallback_non_production: List[Path] = []
     files: List[Path] = []
     for path in target.rglob("*.sol"):
         if not path.is_file():
@@ -218,7 +328,19 @@ def collect_solidity_files(target: Path) -> List[Path]:
         if any(part in IGNORE_DIRS for part in path.parts):
             continue
         files.append(path)
-    return sorted(files)
+
+    for path in files:
+        parts = {part.lower() for part in path.parts}
+        if any(part in NON_PRODUCTION_DIRS for part in parts):
+            fallback_non_production.append(path)
+        else:
+            production_files.append(path)
+
+    if include_non_production:
+        return sorted(files)
+    if production_files:
+        return sorted(production_files)
+    return sorted(fallback_non_production)
 
 
 def aggregate(signals: Sequence[FileSignals]) -> Dict[str, object]:
@@ -289,11 +411,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stdin", action="store_true", help="Read Solidity source from stdin")
     parser.add_argument("--name", default="stdin.sol", help="Display name when using --stdin")
     parser.add_argument("--json-out", help="Optional path to write JSON output")
+    parser.add_argument(
+        "--scoring-version",
+        choices=sorted(VALID_SCORING_VERSIONS),
+        default=None,
+        help=f"Scoring profile to apply (default from env or {DEFAULT_SCORING_VERSION})",
+    )
+    parser.add_argument(
+        "--include-non-production",
+        action="store_true",
+        help="Include test/mock/example/audit contracts when scanning directories",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    scoring_version = resolve_scoring_version(args.scoring_version)
 
     signals: List[FileSignals] = []
 
@@ -302,7 +436,7 @@ def main() -> int:
         if not raw.strip():
             print("No input received on stdin", file=sys.stderr)
             return 1
-        signals.append(analyze_file(Path(args.name), raw))
+        signals.append(analyze_file(Path(args.name), raw, scoring_version=scoring_version))
     else:
         if not args.target:
             print("Provide a target path or use --stdin", file=sys.stderr)
@@ -312,7 +446,7 @@ def main() -> int:
             print(f"Target does not exist: {target}", file=sys.stderr)
             return 1
 
-        files = collect_solidity_files(target)
+        files = collect_solidity_files(target, include_non_production=args.include_non_production)
         if not files:
             print(f"No Solidity files found under: {target}", file=sys.stderr)
             return 1
@@ -322,11 +456,12 @@ def main() -> int:
                 content = file_path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 content = file_path.read_text(encoding="latin-1")
-            signals.append(analyze_file(file_path, content))
+            signals.append(analyze_file(file_path, content, scoring_version=scoring_version))
 
     payload = {
         "tool": "extract_contract_signals",
         "version": "1.0.0",
+        "scoring_version": scoring_version,
         "aggregate": aggregate(signals),
         "files": [item.__dict__ for item in signals],
     }
