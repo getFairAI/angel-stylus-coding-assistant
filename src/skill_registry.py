@@ -4,6 +4,10 @@ import hashlib
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from augmentation_contract import (
+    build_porting_augmentation_contract,
+    render_porting_augmentation_contract,
+)
 from contract_analysis import analyze_contract_target
 from retrieve_chroma_docs import retrieve_stylus_context
 
@@ -225,67 +229,11 @@ def _render_analysis_action_paths(action_paths: list) -> str:
 
 
 def _build_llm_augmentation_contract() -> dict:
-    return {
-        "schema_version": "1.0",
-        "mode": "bounded_second_pass",
-        "required_output": {
-            "additional_good_fit_signals": [
-                {
-                    "contract": "string",
-                    "signal": "string",
-                    "confidence": "high|medium|low",
-                    "citations": ["https://..."],
-                }
-            ],
-            "additional_bad_fit_signals": [
-                {
-                    "contract": "string",
-                    "signal": "string",
-                    "confidence": "high|medium|low",
-                    "citations": ["https://..."],
-                }
-            ],
-            "recommended_carveouts": [
-                {
-                    "contract": "string",
-                    "recommendation": "string",
-                    "rationale": "string",
-                    "confidence": "high|medium|low",
-                    "citations": ["https://..."],
-                }
-            ],
-            "confidence": "high|medium|low",
-            "citations": ["https://..."],
-        },
-        "validation_rules": {
-            "require_citations_per_item": True,
-            "drop_uncited_items": True,
-            "mark_conflicts_low_confidence": True,
-            "on_validation_failure": "fallback_static_only",
-        },
-        "ranking_influence_bounds": {
-            "base_ranking_source": "codebase_analysis",
-            "max_rank_shift": 1,
-            "max_new_high_targets": 2,
-            "allow_removal_of_static_candidates": False,
-        },
-    }
+    return build_porting_augmentation_contract()
 
 
 def _render_llm_augmentation_contract(contract: dict) -> str:
-    if not isinstance(contract, dict):
-        return ""
-    lines = [
-        "LLM augmentation contract:",
-        "- Treat codebase_analysis ranking as the base recommendation.",
-        (
-            "- Return only schema-shaped augmentation fields: additional_good_fit_signals, "
-            "additional_bad_fit_signals, recommended_carveouts, confidence, citations."
-        ),
-        "- Include at least one URL citation for each augmentation claim.",
-        "- Drop uncited or conflicting claims; if uncertain, fall back to static-only output.",
-    ]
-    return "\n".join(lines)
+    return render_porting_augmentation_contract(contract)
 
 
 SKILL_REGISTRY: Dict[str, SkillDefinition] = {
