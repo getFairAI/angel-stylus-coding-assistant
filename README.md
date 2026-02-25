@@ -111,7 +111,6 @@ export OPENROUTER_API_KEY=...
 - `HOST` / `PORT` for API bind address
 - `CORS_ORIGINS` for allowed frontend origins
 - `OPENROUTER_API_KEY` for server-side LLM proxying
-- `STYLUS_PORTING_SCORING_VERSION` (`v1` or `v2`) to select the porting heuristic profile (default `v2`)
 
 Runtime note:
 - On startup, backend auto-loads missing env vars from `.env` candidates (current backend repo/worktree, workspace root, and sibling `backend`/`frontend` repos/worktrees) without overriding already-exported shell variables.

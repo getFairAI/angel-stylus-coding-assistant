@@ -44,7 +44,7 @@ def test_collect_solidity_files_falls_back_to_non_production(tmp_path):
     assert files == [only_test]
 
 
-def test_analyze_file_v2_reduces_import_penalty_relative_to_v1():
+def test_analyze_file_does_not_treat_import_volume_as_strong_integration_risk():
     module = _load_extract_module()
 
     source = (
@@ -56,17 +56,7 @@ def test_analyze_file_v2_reduces_import_penalty_relative_to_v1():
         + "}\n"
     )
 
-    v1 = module.analyze_file(Path("contracts/Foo.sol"), source, scoring_version="v1")
-    v2 = module.analyze_file(Path("contracts/Foo.sol"), source, scoring_version="v2")
+    result = module.analyze_file(Path("contracts/Foo.sol"), source)
 
-    assert v2.integration_score_hint > v1.integration_score_hint
-
-
-def test_resolve_scoring_version_uses_env_and_falls_back(monkeypatch):
-    module = _load_extract_module()
-
-    monkeypatch.setenv("STYLUS_PORTING_SCORING_VERSION", "v1")
-    assert module.resolve_scoring_version(None) == "v1"
-
-    monkeypatch.setenv("STYLUS_PORTING_SCORING_VERSION", "unknown")
-    assert module.resolve_scoring_version(None) == module.DEFAULT_SCORING_VERSION
+    # High import count alone should not collapse integration confidence.
+    assert result.integration_score_hint >= 85

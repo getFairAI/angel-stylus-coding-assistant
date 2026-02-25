@@ -13,12 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Sequence
 
 COMMENT_RE = re.compile(r"//.*?$|/\*.*?\*/", re.MULTILINE | re.DOTALL)
 
@@ -59,8 +58,6 @@ NON_PRODUCTION_DIRS = {
     "audits",
     "crytic",
 }
-DEFAULT_SCORING_VERSION = "v2"
-VALID_SCORING_VERSIONS = {"v1", "v2"}
 
 INTERFACE_CAST_CALL_RE = re.compile(
     r"\bI[A-Za-z0-9_]*\s*\([^)]*\)\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*\("
@@ -140,13 +137,6 @@ def detect_archetype(
     return "isolated-utility-or-mixed"
 
 
-def resolve_scoring_version(value: Optional[str]) -> str:
-    requested = (value or os.getenv("STYLUS_PORTING_SCORING_VERSION") or DEFAULT_SCORING_VERSION).strip().lower()
-    if requested in VALID_SCORING_VERSIONS:
-        return requested
-    return DEFAULT_SCORING_VERSION
-
-
 def count_interface_calls(text: str) -> int:
     calls = len(INTERFACE_CAST_CALL_RE.findall(text))
     for var_name in sorted(set(INTERFACE_TYPED_VAR_RE.findall(text))):
@@ -170,21 +160,12 @@ def _score_hints(
     assembly: int,
     delegatecalls: int,
     proxy_terms: int,
-    scoring_version: str,
 ) -> tuple[int, int, int]:
     compute_raw = (loops * 3.0) + (hash_ops * 5.0) + (crypto_terms * 6.0) + (abi_ops * 1.5)
     storage_raw = (mapping_decl * 3.5) + (storage_kw * 1.0)
 
-    if scoring_version == "v1":
-        coupling_raw = (ext_calls * 2.5) + (inheritance_edges * 2.0) + (imports * 1.5)
-        portability_penalty = (assembly * 14.0) + (delegatecalls * 10.0) + (proxy_terms * 2.5)
-
-        upside_score_hint = clamp_score(50 + (compute_raw * 2.2) - (storage_raw * 0.9) - (coupling_raw * 0.8))
-        portability_score_hint = clamp_score(100 - portability_penalty - (inheritance_edges * 1.5))
-        integration_score_hint = clamp_score(100 - (coupling_raw * 4.2) - (value_calls * 4.0))
-        return upside_score_hint, portability_score_hint, integration_score_hint
-
-    # v2: reduce import-driven false negatives and prioritize true boundary/call complexity.
+    # v2: prioritize true boundary/call complexity.
+    # Imports are treated as migration-surface complexity, not runtime integration risk.
     coupling_raw = (
         (ext_calls * 3.5)
         + (interface_calls * 3.0)
@@ -197,6 +178,7 @@ def _score_hints(
         + (delegatecalls * 12.0)
         + (proxy_terms * 3.0)
         + (inheritance_edges * 1.2)
+        + min(imports * 0.35, 8.0)
     )
 
     upside_score_hint = clamp_score(48 + (compute_raw * 2.1) - (storage_raw * 0.85) - (coupling_raw * 0.45))
@@ -213,7 +195,7 @@ def _score_hints(
     return upside_score_hint, portability_score_hint, integration_score_hint
 
 
-def analyze_file(path: Path, text: str, scoring_version: str = DEFAULT_SCORING_VERSION) -> FileSignals:
+def analyze_file(path: Path, text: str) -> FileSignals:
     cleaned = strip_comments(text)
     lines = [line for line in cleaned.splitlines() if line.strip()]
 
@@ -252,7 +234,6 @@ def analyze_file(path: Path, text: str, scoring_version: str = DEFAULT_SCORING_V
         assembly=assembly,
         delegatecalls=delegatecalls,
         proxy_terms=proxy_terms,
-        scoring_version=scoring_version,
     )
 
     archetype_hint = detect_archetype(
@@ -412,12 +393,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", default="stdin.sol", help="Display name when using --stdin")
     parser.add_argument("--json-out", help="Optional path to write JSON output")
     parser.add_argument(
-        "--scoring-version",
-        choices=sorted(VALID_SCORING_VERSIONS),
-        default=None,
-        help=f"Scoring profile to apply (default from env or {DEFAULT_SCORING_VERSION})",
-    )
-    parser.add_argument(
         "--include-non-production",
         action="store_true",
         help="Include test/mock/example/audit contracts when scanning directories",
@@ -427,7 +402,6 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    scoring_version = resolve_scoring_version(args.scoring_version)
 
     signals: List[FileSignals] = []
 
@@ -436,7 +410,7 @@ def main() -> int:
         if not raw.strip():
             print("No input received on stdin", file=sys.stderr)
             return 1
-        signals.append(analyze_file(Path(args.name), raw, scoring_version=scoring_version))
+        signals.append(analyze_file(Path(args.name), raw))
     else:
         if not args.target:
             print("Provide a target path or use --stdin", file=sys.stderr)
@@ -456,12 +430,11 @@ def main() -> int:
                 content = file_path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 content = file_path.read_text(encoding="latin-1")
-            signals.append(analyze_file(file_path, content, scoring_version=scoring_version))
+            signals.append(analyze_file(file_path, content))
 
     payload = {
         "tool": "extract_contract_signals",
         "version": "1.0.0",
-        "scoring_version": scoring_version,
         "aggregate": aggregate(signals),
         "files": [item.__dict__ for item in signals],
     }
