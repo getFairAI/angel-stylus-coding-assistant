@@ -33,6 +33,14 @@ def test_parse_github_target_tree_url():
     assert parsed["subpath"] == "contracts"
 
 
+def test_parse_github_target_without_scheme():
+    parsed = contract_analysis.parse_github_target_url("github.com/gmx-io/gmx-contracts")
+    assert parsed is not None
+    assert parsed["owner"] == "gmx-io"
+    assert parsed["repo"] == "gmx-contracts"
+    assert parsed["source_url"] == "https://github.com/gmx-io/gmx-contracts"
+
+
 def test_analyze_contract_target_uses_github_target(monkeypatch):
     called = {}
 
@@ -49,6 +57,28 @@ def test_analyze_contract_target_uses_github_target(monkeypatch):
     assert result is not None
     assert result["mode"] == "github_repo"
     assert called["target"]["owner"] == "acme-defi"
+
+
+def test_analyze_contract_target_github_prompt_paraphrase_stability(monkeypatch):
+    prompts = [
+        "Analyze https://github.com/gmx-io/gmx-contracts and classify targets.",
+        "Please audit candidacy for github.com/gmx-io/gmx-contracts (high vs low impact).",
+        "For this repo: https://github.com/gmx-io/gmx-contracts/, what should be ported first?",
+        "Analyze `https://github.com/gmx-io/gmx-contracts` for stylus migration fit.",
+    ]
+    calls = []
+
+    def fake_analyze(target):
+        calls.append(target)
+        return {"mode": "github_repo", "target": target["source_url"]}
+
+    monkeypatch.setattr(contract_analysis, "_analyze_github_target", fake_analyze)
+
+    results = [contract_analysis.analyze_contract_target(prompt) for prompt in prompts]
+
+    assert all(item is not None for item in results)
+    assert all(item["mode"] == "github_repo" for item in results)
+    assert all(call["owner"] == "gmx-io" and call["repo"] == "gmx-contracts" for call in calls)
 
 
 def test_analyze_contract_target_uses_local_path(monkeypatch, tmp_path):
@@ -82,6 +112,23 @@ def test_extract_local_target_supports_relative_path_without_dot_prefix(monkeypa
     result = contract_analysis._extract_local_target_from_prompt("Analyze contracts/Token.sol")
 
     assert result == target.resolve()
+
+
+def test_extract_local_target_prompt_paraphrase_stability(monkeypatch, tmp_path):
+    contracts_dir = tmp_path / "contracts"
+    contracts_dir.mkdir()
+    target = contracts_dir / "Token.sol"
+    target.write_text("contract Token {}", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    prompts = [
+        "Analyze contracts/Token.sol",
+        "Please evaluate `./contracts/Token.sol` for stylus porting.",
+        "What do you think about (contracts/Token.sol)?",
+    ]
+
+    results = [contract_analysis._extract_local_target_from_prompt(prompt) for prompt in prompts]
+    assert all(item == target.resolve() for item in results)
 
 
 def test_select_targets_prefers_production_contract_paths():

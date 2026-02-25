@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 
-GITHUB_URL_RE = re.compile(r"https?://github\.com/[^\s)>\]]+", re.IGNORECASE)
+GITHUB_URL_RE = re.compile(r"(?:https?://)?(?:www\.)?github\.com/[^\s)>\]`]+", re.IGNORECASE)
 LOCAL_PATH_RE = re.compile(
     r"(?:(?:\.{1,2}/|~/|/)[^\s'\"<>]+|[A-Za-z0-9_.-]+/[^\s'\"<>]+|[A-Za-z]:\\[^\s'\"<>]+|[A-Za-z0-9_.-]+\.sol)"
 )
@@ -67,11 +67,16 @@ SIGNAL_LABELS = {
 
 
 def _clean_url(value: str) -> str:
-    return value.rstrip(".,);:]}>\"'")
+    return value.rstrip(".,);:]}>\"'`?!")
 
 
 def parse_github_target_url(url: str) -> Optional[Dict[str, str]]:
-    parsed = urlparse(_clean_url(url))
+    cleaned = _clean_url(url)
+    lowered = cleaned.lower()
+    if lowered.startswith("github.com/") or lowered.startswith("www.github.com/"):
+        cleaned = f"https://{cleaned}"
+
+    parsed = urlparse(cleaned)
     if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
         return None
 
@@ -99,10 +104,10 @@ def parse_github_target_url(url: str) -> Optional[Dict[str, str]]:
             branch = parts[3]
             subpath = "/".join(parts[4:])
             mode = "github_file" if marker == "blob" else "github_dir"
-            source_url = _clean_url(url)
+            source_url = cleaned
         elif marker in {"blob", "tree"}:
             mode = "github_repo"
-            source_url = _clean_url(url)
+            source_url = cleaned
         elif marker not in {"", "commit"}:
             # Keep repository-level behavior for unknown subpages.
             mode = "github_repo"
@@ -131,7 +136,7 @@ def _extract_local_target_from_prompt(prompt: str) -> Optional[Path]:
     scrubbed = GITHUB_URL_RE.sub(" ", prompt)
     for candidate in LOCAL_PATH_RE.findall(scrubbed):
         cleaned = candidate.strip("`'\"()[]{}<>")
-        cleaned = cleaned.rstrip(".,);:]}>\"'")
+        cleaned = cleaned.rstrip(".,);:]}>\"'`?!")
         if not cleaned:
             continue
 
