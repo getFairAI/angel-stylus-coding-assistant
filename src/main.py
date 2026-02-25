@@ -10,6 +10,7 @@ import requests
 
 from augmentation_contract import (
     build_porting_augmentation_contract,
+    compare_porting_analysis_with_augmentation,
     validate_porting_augmentation,
 )
 from basic_logs import write_request_log
@@ -55,6 +56,11 @@ class StylusRequest(BaseModel):
 
 
 class PortingAugmentationValidationRequest(BaseModel):
+    augmentation: object
+
+
+class PortingAugmentationCompareRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
     augmentation: object
 
 
@@ -123,6 +129,27 @@ def validate_porting_augmentation_endpoint(request: PortingAugmentationValidatio
         "skill": SKILL_ID_PORTING_AUDITOR,
         "llm_augmentation_contract": contract,
         "llm_augmentation": validated,
+    }
+
+
+@app.post("/skills/sift-stylus-porting-auditor/compare-augmentation")
+def compare_porting_augmentation_endpoint(request: PortingAugmentationCompareRequest):
+    base_payload = run_skill_search(SKILL_ID_PORTING_AUDITOR, request.prompt)
+    analysis = base_payload.get("codebase_analysis") if isinstance(base_payload, dict) else None
+
+    contract = build_porting_augmentation_contract()
+    validated = validate_porting_augmentation(request.augmentation, contract=contract)
+    comparison = compare_porting_analysis_with_augmentation(
+        analysis,
+        validated,
+        contract=contract,
+    )
+    return {
+        "skill": SKILL_ID_PORTING_AUDITOR,
+        "codebase_analysis": analysis,
+        "llm_augmentation_contract": contract,
+        "llm_augmentation": validated,
+        "augmentation_comparison": comparison,
     }
 
 

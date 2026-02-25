@@ -112,6 +112,76 @@ def test_validate_porting_augmentation_endpoint_success():
     assert payload["llm_augmentation"]["validation"]["status"] == "valid"
 
 
+def test_compare_porting_augmentation_endpoint_returns_quality_delta(monkeypatch):
+    monkeypatch.setattr(
+        app_module,
+        "run_skill_search",
+        lambda _skill_id, _prompt: {
+            "skill": "sift-stylus-porting-auditor",
+            "codebase_analysis": {
+                "high_targets": [{"path": "contracts/ComputeHeavy.sol", "hint_score": 81}],
+                "low_targets": [{"path": "contracts/Router.sol", "hint_score": 39}],
+            },
+        },
+    )
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/skills/sift-stylus-porting-auditor/compare-augmentation",
+        json={
+            "prompt": "Analyze ./contracts",
+            "augmentation": {
+                "additional_good_fit_signals": [
+                    {
+                        "contract": "contracts/Router.sol",
+                        "signal": "compute-heavy route path",
+                        "confidence": "high",
+                        "citations": ["https://example.com/router"],
+                    }
+                ],
+                "additional_bad_fit_signals": [],
+                "recommended_carveouts": [],
+                "confidence": "medium",
+                "citations": ["https://example.com/summary"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    comparison = payload["augmentation_comparison"]
+    assert comparison["mode"] == "bounded_second_pass"
+    assert comparison["quality_delta"]["promotions"] == 1
+    assert "contracts/Router.sol" in comparison["quality_delta"]["high_targets_added"]
+
+
+def test_compare_porting_augmentation_endpoint_keeps_static_on_invalid_augmentation(monkeypatch):
+    monkeypatch.setattr(
+        app_module,
+        "run_skill_search",
+        lambda _skill_id, _prompt: {
+            "skill": "sift-stylus-porting-auditor",
+            "codebase_analysis": {
+                "high_targets": [{"path": "contracts/ComputeHeavy.sol", "hint_score": 81}],
+                "low_targets": [{"path": "contracts/Router.sol", "hint_score": 39}],
+            },
+        },
+    )
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/skills/sift-stylus-porting-auditor/compare-augmentation",
+        json={
+            "prompt": "Analyze ./contracts",
+            "augmentation": "not-a-valid-object",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    comparison = payload["augmentation_comparison"]
+    assert comparison["mode"] == "static_only"
+    assert comparison["quality_delta"]["promotions"] == 0
+
+
 def test_openrouter_proxy_requires_backend_api_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     client = TestClient(app_module.app)
