@@ -76,6 +76,7 @@ def test_published_prompt_is_source_of_truth():
 
     assert research.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_RESEARCH)
     assert porting.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_PORTING_AUDITOR)
+    assert "analysis_action_paths" in porting.system_prompt
 
 
 def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
@@ -142,7 +143,10 @@ def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
 
     assert payload["skill"] == skill_registry.SKILL_ID_PORTING_AUDITOR
     assert payload["analysis_brief"].startswith("Porting analysis brief:")
+    assert isinstance(payload["analysis_action_paths"], list)
+    assert len(payload["analysis_action_paths"]) >= 3
     assert payload["context"].startswith("Porting analysis brief:")
+    assert "Porting action paths:" in payload["context"]
     assert "Static contract analysis summary." in payload["context"]
     assert payload["codebase_analysis"]["mode"] == "github_repo"
     assert payload["references"][0]["url"] == "https://github.com/example/repo"
@@ -167,3 +171,11 @@ def test_research_skill_does_not_run_codebase_analysis(monkeypatch):
     )
 
     assert payload["skill"] == skill_registry.SKILL_ID_RESEARCH
+
+
+def test_build_analysis_action_paths_handles_missing_analysis():
+    paths = skill_registry._build_analysis_action_paths({})
+    assert isinstance(paths, list)
+    assert len(paths) >= 3
+    assert "Porting action paths:" in skill_registry._render_analysis_action_paths(paths)
+    assert skill_registry._render_analysis_action_paths([]) == ""

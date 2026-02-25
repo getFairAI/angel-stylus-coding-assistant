@@ -160,6 +160,70 @@ def _build_analysis_brief(analysis: dict) -> str:
     return "\n".join(lines)
 
 
+def _build_analysis_action_paths(analysis: dict) -> list:
+    if not isinstance(analysis, dict):
+        return []
+
+    high_targets = analysis.get("high_targets") or []
+    low_targets = analysis.get("low_targets") or []
+    target = str(analysis.get("target") or "").strip()
+
+    action_paths = [
+        {
+            "id": "source_scope",
+            "instruction": (
+                "Confirm scope from the analyzed target and treat static findings as directional, "
+                "not as runtime proof."
+            ),
+            "evidence": target or "target_not_provided",
+        },
+        {
+            "id": "candidate_selection",
+            "instruction": (
+                "Prioritize high-benefit candidates from codebase_analysis.high_targets, and explicitly "
+                "label low-impact/defer candidates from codebase_analysis.low_targets."
+            ),
+            "evidence": f"high={len(high_targets)}, low={len(low_targets)}",
+        },
+        {
+            "id": "boundary_risk_check",
+            "instruction": (
+                "Use risk drivers and low-impact selections to call out boundary/interface risks that should "
+                "remain in Solidity unless mitigated."
+            ),
+            "evidence": "risk_drivers + low_targets",
+        },
+        {
+            "id": "evidence_citation",
+            "instruction": (
+                "Tie each recommendation to references from analysis and retrieval payload; avoid uncited claims."
+            ),
+            "evidence": "references",
+        },
+    ]
+    return action_paths
+
+
+def _render_analysis_action_paths(action_paths: list) -> str:
+    if not isinstance(action_paths, list) or not action_paths:
+        return ""
+    lines = ["Porting action paths:"]
+    for item in action_paths:
+        if not isinstance(item, dict):
+            continue
+        instruction = str(item.get("instruction") or "").strip()
+        evidence = str(item.get("evidence") or "").strip()
+        if not instruction:
+            continue
+        if evidence:
+            lines.append(f"- {instruction} (signal: {evidence})")
+        else:
+            lines.append(f"- {instruction}")
+    if len(lines) == 1:
+        return ""
+    return "\n".join(lines)
+
+
 SKILL_REGISTRY: Dict[str, SkillDefinition] = {
     SKILL_ID_RESEARCH: SkillDefinition(
         skill_id=SKILL_ID_RESEARCH,
@@ -218,11 +282,17 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
             if isinstance(analysis, dict):
                 payload["codebase_analysis"] = analysis
                 brief = _build_analysis_brief(analysis)
+                action_paths = _build_analysis_action_paths(analysis)
+                if action_paths:
+                    payload["analysis_action_paths"] = action_paths
+                action_paths_text = _render_analysis_action_paths(action_paths)
                 if brief:
                     payload["analysis_brief"] = brief
 
                 summary = str(analysis.get("summary") or "").strip()
-                analysis_context = "\n\n".join(part for part in [brief, summary] if part).strip()
+                analysis_context = "\n\n".join(
+                    part for part in [brief, action_paths_text, summary] if part
+                ).strip()
                 if analysis_context:
                     base_context = str(payload.get("context") or "").strip()
                     payload["context"] = (
