@@ -224,6 +224,70 @@ def _render_analysis_action_paths(action_paths: list) -> str:
     return "\n".join(lines)
 
 
+def _build_llm_augmentation_contract() -> dict:
+    return {
+        "schema_version": "1.0",
+        "mode": "bounded_second_pass",
+        "required_output": {
+            "additional_good_fit_signals": [
+                {
+                    "contract": "string",
+                    "signal": "string",
+                    "confidence": "high|medium|low",
+                    "citations": ["https://..."],
+                }
+            ],
+            "additional_bad_fit_signals": [
+                {
+                    "contract": "string",
+                    "signal": "string",
+                    "confidence": "high|medium|low",
+                    "citations": ["https://..."],
+                }
+            ],
+            "recommended_carveouts": [
+                {
+                    "contract": "string",
+                    "recommendation": "string",
+                    "rationale": "string",
+                    "confidence": "high|medium|low",
+                    "citations": ["https://..."],
+                }
+            ],
+            "confidence": "high|medium|low",
+            "citations": ["https://..."],
+        },
+        "validation_rules": {
+            "require_citations_per_item": True,
+            "drop_uncited_items": True,
+            "mark_conflicts_low_confidence": True,
+            "on_validation_failure": "fallback_static_only",
+        },
+        "ranking_influence_bounds": {
+            "base_ranking_source": "codebase_analysis",
+            "max_rank_shift": 1,
+            "max_new_high_targets": 2,
+            "allow_removal_of_static_candidates": False,
+        },
+    }
+
+
+def _render_llm_augmentation_contract(contract: dict) -> str:
+    if not isinstance(contract, dict):
+        return ""
+    lines = [
+        "LLM augmentation contract:",
+        "- Treat codebase_analysis ranking as the base recommendation.",
+        (
+            "- Return only schema-shaped augmentation fields: additional_good_fit_signals, "
+            "additional_bad_fit_signals, recommended_carveouts, confidence, citations."
+        ),
+        "- Include at least one URL citation for each augmentation claim.",
+        "- Drop uncited or conflicting claims; if uncertain, fall back to static-only output.",
+    ]
+    return "\n".join(lines)
+
+
 SKILL_REGISTRY: Dict[str, SkillDefinition] = {
     SKILL_ID_RESEARCH: SkillDefinition(
         skill_id=SKILL_ID_RESEARCH,
@@ -278,7 +342,14 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
         payload.setdefault("skill_behavior_hash", skill.behavior_hash)
 
         if skill_id == SKILL_ID_PORTING_AUDITOR:
+            augmentation_contract = _build_llm_augmentation_contract()
+            payload["llm_augmentation_contract"] = augmentation_contract
+            augmentation_text = _render_llm_augmentation_contract(augmentation_contract)
+
             analysis = analyze_contract_target(prompt)
+            brief = ""
+            action_paths_text = ""
+            summary = ""
             if isinstance(analysis, dict):
                 payload["codebase_analysis"] = analysis
                 brief = _build_analysis_brief(analysis)
@@ -290,14 +361,6 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
                     payload["analysis_brief"] = brief
 
                 summary = str(analysis.get("summary") or "").strip()
-                analysis_context = "\n\n".join(
-                    part for part in [brief, action_paths_text, summary] if part
-                ).strip()
-                if analysis_context:
-                    base_context = str(payload.get("context") or "").strip()
-                    payload["context"] = (
-                        f"{analysis_context}\n\n{base_context}" if base_context else analysis_context
-                    )
 
                 analysis_refs = analysis.get("references") or []
                 if isinstance(analysis_refs, list) and analysis_refs:
@@ -325,4 +388,13 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
                             for ref in merged[:12]:
                                 lines.append(f"- [{ref['title']}]({ref['url']})")
                             payload["references_markdown"] = "\n".join(lines)
+
+            analysis_context = "\n\n".join(
+                part for part in [brief, action_paths_text, augmentation_text, summary] if part
+            ).strip()
+            if analysis_context:
+                base_context = str(payload.get("context") or "").strip()
+                payload["context"] = (
+                    f"{analysis_context}\n\n{base_context}" if base_context else analysis_context
+                )
     return payload

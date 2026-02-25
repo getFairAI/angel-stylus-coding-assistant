@@ -127,3 +127,4 @@ def test_porting_pipeline_local_codebase_map_filters_non_production_and_surfaces
     action_paths = payload.get("analysis_action_paths") or []
     assert isinstance(action_paths, list)
     assert len(action_paths) >= 3
+    assert payload.get("llm_augmentation_contract", {}).get("mode") == "bounded_second_pass"

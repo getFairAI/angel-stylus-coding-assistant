@@ -77,6 +77,7 @@ def test_published_prompt_is_source_of_truth():
     assert research.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_RESEARCH)
     assert porting.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_PORTING_AUDITOR)
     assert "analysis_action_paths" in porting.system_prompt
+    assert "llm_augmentation_contract" in porting.system_prompt
 
 
 def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
@@ -147,7 +148,10 @@ def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
     assert len(payload["analysis_action_paths"]) >= 3
     assert payload["context"].startswith("Porting analysis brief:")
     assert "Porting action paths:" in payload["context"]
+    assert "LLM augmentation contract:" in payload["context"]
     assert "Static contract analysis summary." in payload["context"]
+    assert payload["llm_augmentation_contract"]["mode"] == "bounded_second_pass"
+    assert payload["llm_augmentation_contract"]["validation_rules"]["drop_uncited_items"] is True
     assert payload["codebase_analysis"]["mode"] == "github_repo"
     assert payload["references"][0]["url"] == "https://github.com/example/repo"
     assert "References:" in payload["references_markdown"]
@@ -179,3 +183,31 @@ def test_build_analysis_action_paths_handles_missing_analysis():
     assert len(paths) >= 3
     assert "Porting action paths:" in skill_registry._render_analysis_action_paths(paths)
     assert skill_registry._render_analysis_action_paths([]) == ""
+
+
+def test_porting_skill_adds_augmentation_contract_without_analysis(monkeypatch):
+    monkeypatch.setattr(
+        skill_registry,
+        "retrieve_stylus_context",
+        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+    )
+    monkeypatch.setattr(skill_registry, "analyze_contract_target", lambda _prompt: None)
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_PORTING_AUDITOR,
+        "Analyze this repo",
+    )
+
+    assert "codebase_analysis" not in payload
+    assert payload["llm_augmentation_contract"]["schema_version"] == "1.0"
+    assert payload["context"].startswith("LLM augmentation contract:")
+
+
+def test_llm_augmentation_contract_shape_and_rendering():
+    contract = skill_registry._build_llm_augmentation_contract()
+    rendered = skill_registry._render_llm_augmentation_contract(contract)
+
+    assert contract["mode"] == "bounded_second_pass"
+    assert "recommended_carveouts" in contract["required_output"]
+    assert contract["validation_rules"]["on_validation_failure"] == "fallback_static_only"
+    assert "LLM augmentation contract:" in rendered
