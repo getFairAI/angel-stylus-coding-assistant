@@ -81,6 +81,30 @@ def test_analyze_contract_target_github_prompt_paraphrase_stability(monkeypatch)
     assert all(call["owner"] == "gmx-io" and call["repo"] == "gmx-contracts" for call in calls)
 
 
+def test_extract_github_target_prefers_action_url_over_reference_link():
+    prompt = (
+        "Use benchmark context from https://github.com/LimeChain/stylus-benchmark, "
+        "then analyze https://github.com/gmx-io/gmx-contracts and identify high_stylus_benefit targets."
+    )
+    parsed = contract_analysis._extract_github_target_from_prompt(prompt)
+
+    assert parsed is not None
+    assert parsed["owner"] == "gmx-io"
+    assert parsed["repo"] == "gmx-contracts"
+
+
+def test_extract_github_target_prefers_specific_blob_over_repo_when_analyzing_file():
+    prompt = (
+        "Analyze contract file https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol "
+        "and use https://github.com/Uniswap/v3-core as general context."
+    )
+    parsed = contract_analysis._extract_github_target_from_prompt(prompt)
+
+    assert parsed is not None
+    assert parsed["mode"] == "github_file"
+    assert parsed["subpath"] == "contracts/UniswapV3Pool.sol"
+
+
 def test_analyze_contract_target_uses_local_path(monkeypatch, tmp_path):
     local = tmp_path / "contracts"
     local.mkdir()

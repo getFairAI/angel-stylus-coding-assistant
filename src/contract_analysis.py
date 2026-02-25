@@ -124,12 +124,103 @@ def parse_github_target_url(url: str) -> Optional[Dict[str, str]]:
     }
 
 
+_PROMPT_ACTION_TOKENS = {
+    "analyze",
+    "analysis",
+    "audit",
+    "evaluate",
+    "classify",
+    "identify",
+    "porting",
+    "port",
+    "target",
+    "targets",
+    "contract",
+    "contracts",
+    "codebase",
+    "repo",
+    "repository",
+    "verdict",
+}
+_PROMPT_CONTEXT_TOKENS = {
+    "reference",
+    "references",
+    "citation",
+    "citations",
+    "source",
+    "sources",
+    "background",
+    "context",
+    "example",
+    "examples",
+    "benchmark",
+    "benchmarks",
+    "blog",
+}
+
+
+def _score_github_target_candidate(
+    prompt: str,
+    parsed_target: Dict[str, str],
+    *,
+    start_idx: int,
+    end_idx: int,
+) -> int:
+    score = 0
+
+    mode = str(parsed_target.get("mode") or "")
+    if mode == "github_file":
+        score += 40
+    elif mode == "github_dir":
+        score += 30
+    else:
+        score += 20
+
+    subpath = str(parsed_target.get("subpath") or "").lower()
+    if subpath.endswith(".sol"):
+        score += 15
+
+    lowered = prompt.lower()
+    window_left = max(0, start_idx - 100)
+    window_right = min(len(lowered), end_idx + 100)
+    context = lowered[window_left:window_right]
+    tokens = re.findall(r"[a-z_]+", context)
+    if tokens:
+        action_hits = sum(1 for token in tokens if token in _PROMPT_ACTION_TOKENS)
+        context_hits = sum(1 for token in tokens if token in _PROMPT_CONTEXT_TOKENS)
+        score += action_hits * 3
+        score -= context_hits * 2
+
+    # Strongly prefer links that immediately follow an action verb.
+    prelude = lowered[max(0, start_idx - 28) : start_idx]
+    if re.search(r"(analyze|audit|evaluate|classify|identify|review)\s*$", prelude):
+        score += 18
+    if re.search(r"(from|reference|references|context|source|using|use)\s*$", prelude):
+        score -= 8
+
+    return score
+
+
 def _extract_github_target_from_prompt(prompt: str) -> Optional[Dict[str, str]]:
-    for raw in GITHUB_URL_RE.findall(prompt):
+    candidates = []
+    for match in GITHUB_URL_RE.finditer(prompt):
+        raw = match.group(0)
         parsed = parse_github_target_url(raw)
-        if parsed:
-            return parsed
-    return None
+        if not parsed:
+            continue
+        score = _score_github_target_candidate(
+            prompt,
+            parsed,
+            start_idx=match.start(),
+            end_idx=match.end(),
+        )
+        candidates.append((score, match.start(), parsed))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    return candidates[0][2]
 
 
 def _extract_local_target_from_prompt(prompt: str) -> Optional[Path]:
