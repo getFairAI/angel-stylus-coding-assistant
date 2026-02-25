@@ -96,6 +96,27 @@ class FileSignals:
     risk_signals: List[str]
 
 
+@dataclass(frozen=True)
+class FeatureCounts:
+    functions: int
+    loops: int
+    hash_ops: int
+    crypto_terms: int
+    abi_ops: int
+    mapping_decl: int
+    storage_kw: int
+    assembly: int
+    emit_count: int
+    imports: int
+    inheritance_edges: int
+    ext_calls: int
+    interface_calls: int
+    value_calls: int
+    delegatecalls: int
+    proxy_terms: int
+    token_terms: int
+
+
 def strip_comments(text: str) -> str:
     return COMMENT_RE.sub("", text)
 
@@ -142,6 +163,28 @@ def count_interface_calls(text: str) -> int:
     for var_name in sorted(set(INTERFACE_TYPED_VAR_RE.findall(text))):
         calls += len(re.findall(rf"\b{re.escape(var_name)}\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*\(", text))
     return calls
+
+
+def extract_feature_counts(cleaned_source: str) -> FeatureCounts:
+    return FeatureCounts(
+        functions=count("functions", cleaned_source),
+        loops=count("loops", cleaned_source) + count("do_loops", cleaned_source),
+        hash_ops=count("hash_ops", cleaned_source),
+        crypto_terms=count("crypto_terms", cleaned_source),
+        abi_ops=count("abi_ops", cleaned_source),
+        mapping_decl=count("mapping_decl", cleaned_source),
+        storage_kw=count("storage_kw", cleaned_source),
+        assembly=count("assembly", cleaned_source),
+        emit_count=count("emit", cleaned_source),
+        imports=count("imports", cleaned_source),
+        inheritance_edges=count_inheritance_edges(cleaned_source),
+        ext_calls=count("ext_calls", cleaned_source),
+        interface_calls=count_interface_calls(cleaned_source),
+        value_calls=count("value_calls", cleaned_source),
+        delegatecalls=len(re.findall(r"\.\s*delegatecall\s*\(", cleaned_source)),
+        proxy_terms=count("proxy_terms", cleaned_source),
+        token_terms=count("token_terms", cleaned_source),
+    )
 
 
 def _score_hints(
@@ -195,55 +238,39 @@ def _score_hints(
     return upside_score_hint, portability_score_hint, integration_score_hint
 
 
-def analyze_file(path: Path, text: str) -> FileSignals:
-    cleaned = strip_comments(text)
-    lines = [line for line in cleaned.splitlines() if line.strip()]
-
-    contract_names = [match.group(1) for match in PATTERNS["contracts"].finditer(cleaned)]
-
-    functions = count("functions", cleaned)
-    loops = count("loops", cleaned) + count("do_loops", cleaned)
-    hash_ops = count("hash_ops", cleaned)
-    crypto_terms = count("crypto_terms", cleaned)
-    abi_ops = count("abi_ops", cleaned)
-    mapping_decl = count("mapping_decl", cleaned)
-    storage_kw = count("storage_kw", cleaned)
-    assembly = count("assembly", cleaned)
-    emit_count = count("emit", cleaned)
-    imports = count("imports", cleaned)
-    inheritance_edges = count_inheritance_edges(cleaned)
-    ext_calls = count("ext_calls", cleaned)
-    interface_calls = count_interface_calls(cleaned)
-    value_calls = count("value_calls", cleaned)
-    delegatecalls = len(re.findall(r"\.\s*delegatecall\s*\(", cleaned))
-    proxy_terms = count("proxy_terms", cleaned)
-    token_terms = count("token_terms", cleaned)
-
-    upside_score_hint, portability_score_hint, integration_score_hint = _score_hints(
-        loops=loops,
-        hash_ops=hash_ops,
-        crypto_terms=crypto_terms,
-        abi_ops=abi_ops,
-        mapping_decl=mapping_decl,
-        storage_kw=storage_kw,
-        imports=imports,
-        inheritance_edges=inheritance_edges,
-        ext_calls=ext_calls,
-        interface_calls=interface_calls,
-        value_calls=value_calls,
-        assembly=assembly,
-        delegatecalls=delegatecalls,
-        proxy_terms=proxy_terms,
+def score_feature_counts(counts: FeatureCounts) -> tuple[int, int, int]:
+    return _score_hints(
+        loops=counts.loops,
+        hash_ops=counts.hash_ops,
+        crypto_terms=counts.crypto_terms,
+        abi_ops=counts.abi_ops,
+        mapping_decl=counts.mapping_decl,
+        storage_kw=counts.storage_kw,
+        imports=counts.imports,
+        inheritance_edges=counts.inheritance_edges,
+        ext_calls=counts.ext_calls,
+        interface_calls=counts.interface_calls,
+        value_calls=counts.value_calls,
+        assembly=counts.assembly,
+        delegatecalls=counts.delegatecalls,
+        proxy_terms=counts.proxy_terms,
     )
 
+
+def assemble_signal_explanations(
+    counts: FeatureCounts,
+    *,
+    upside_score_hint: int,
+    integration_score_hint: int,
+) -> tuple[str, List[str], List[str]]:
     archetype_hint = detect_archetype(
-        hash_ops=hash_ops,
-        crypto_terms=crypto_terms,
-        loops=loops,
-        token_terms=token_terms,
-        proxy_terms=proxy_terms,
-        delegatecalls=delegatecalls,
-        ext_calls=ext_calls,
+        hash_ops=counts.hash_ops,
+        crypto_terms=counts.crypto_terms,
+        loops=counts.loops,
+        token_terms=counts.token_terms,
+        proxy_terms=counts.proxy_terms,
+        delegatecalls=counts.delegatecalls,
+        ext_calls=counts.ext_calls,
     )
 
     positive_signals: List[str] = []
@@ -251,42 +278,81 @@ def analyze_file(path: Path, text: str) -> FileSignals:
 
     if upside_score_hint >= 70:
         positive_signals.append("high-compute-signals")
-    if (hash_ops + crypto_terms) >= 2:
+    if (counts.hash_ops + counts.crypto_terms) >= 2:
         positive_signals.append("crypto-workload")
-    if ext_calls <= 1:
+    if counts.ext_calls <= 1:
         positive_signals.append("low-external-coupling")
 
-    if assembly > 0:
+    if counts.assembly > 0:
         risk_signals.append("inline-assembly-yul-dependence")
-    if delegatecalls > 0 or proxy_terms >= 3:
+    if counts.delegatecalls > 0 or counts.proxy_terms >= 3:
         risk_signals.append("proxy-upgrade-complexity")
-    if (ext_calls + interface_calls) >= 4:
+    if (counts.ext_calls + counts.interface_calls) >= 4:
         risk_signals.append("high-external-call-fanout")
     if integration_score_hint < 45:
         risk_signals.append("high-integration-coupling")
-    if token_terms >= 2 and upside_score_hint < 65:
+    if counts.token_terms >= 2 and upside_score_hint < 65:
         risk_signals.append("simple-token-low-upside-risk")
+
+    return archetype_hint, positive_signals, risk_signals
+
+
+def hint_score(item: FileSignals) -> int:
+    return clamp_score(
+        (item.upside_score_hint * 0.7)
+        + (item.portability_score_hint * 0.2)
+        + (item.integration_score_hint * 0.1)
+    )
+
+
+def select_candidate_targets(signals: Sequence[FileSignals], limit: int = 5) -> List[FileSignals]:
+    return sorted(signals, key=hint_score, reverse=True)[:limit]
+
+
+def build_candidate_explanation(item: FileSignals) -> Dict[str, object]:
+    reason = ", ".join(item.positive_signals[:2]) or "mixed-signals"
+    return {
+        "path": item.path,
+        "contracts": item.contract_names,
+        "archetype_hint": item.archetype_hint,
+        "hint_score": hint_score(item),
+        "reason": reason,
+    }
+
+
+def analyze_file(path: Path, text: str) -> FileSignals:
+    cleaned = strip_comments(text)
+    lines = [line for line in cleaned.splitlines() if line.strip()]
+
+    contract_names = [match.group(1) for match in PATTERNS["contracts"].finditer(cleaned)]
+    counts = extract_feature_counts(cleaned)
+    upside_score_hint, portability_score_hint, integration_score_hint = score_feature_counts(counts)
+    archetype_hint, positive_signals, risk_signals = assemble_signal_explanations(
+        counts,
+        upside_score_hint=upside_score_hint,
+        integration_score_hint=integration_score_hint,
+    )
 
     return FileSignals(
         path=str(path),
         contract_names=contract_names,
         loc=len(lines),
-        functions=functions,
-        loops=loops,
-        hash_ops=hash_ops,
-        crypto_terms=crypto_terms,
-        abi_ops=abi_ops,
-        mapping_decl=mapping_decl,
-        storage_kw=storage_kw,
-        assembly=assembly,
-        emit_count=emit_count,
-        imports=imports,
-        inheritance_edges=inheritance_edges,
-        ext_calls=ext_calls,
-        value_calls=value_calls,
-        delegatecalls=delegatecalls,
-        proxy_terms=proxy_terms,
-        token_terms=token_terms,
+        functions=counts.functions,
+        loops=counts.loops,
+        hash_ops=counts.hash_ops,
+        crypto_terms=counts.crypto_terms,
+        abi_ops=counts.abi_ops,
+        mapping_decl=counts.mapping_decl,
+        storage_kw=counts.storage_kw,
+        assembly=counts.assembly,
+        emit_count=counts.emit_count,
+        imports=counts.imports,
+        inheritance_edges=counts.inheritance_edges,
+        ext_calls=counts.ext_calls,
+        value_calls=counts.value_calls,
+        delegatecalls=counts.delegatecalls,
+        proxy_terms=counts.proxy_terms,
+        token_terms=counts.token_terms,
         upside_score_hint=upside_score_hint,
         portability_score_hint=portability_score_hint,
         integration_score_hint=integration_score_hint,
@@ -349,28 +415,7 @@ def aggregate(signals: Sequence[FileSignals]) -> Dict[str, object]:
     avg_integration = sum(item.integration_score_hint for item in signals) / len(signals)
     final_hint = clamp_score((avg_upside * 0.7) + (avg_portability * 0.2) + (avg_integration * 0.1))
 
-    ranked = sorted(
-        signals,
-        key=lambda item: (item.upside_score_hint * 0.7)
-        + (item.portability_score_hint * 0.2)
-        + (item.integration_score_hint * 0.1),
-        reverse=True,
-    )
-
-    top_candidates = [
-        {
-            "path": item.path,
-            "contracts": item.contract_names,
-            "archetype_hint": item.archetype_hint,
-            "hint_score": clamp_score(
-                (item.upside_score_hint * 0.7)
-                + (item.portability_score_hint * 0.2)
-                + (item.integration_score_hint * 0.1)
-            ),
-            "reason": ", ".join(item.positive_signals[:2]) or "mixed-signals",
-        }
-        for item in ranked[:5]
-    ]
+    top_candidates = [build_candidate_explanation(item) for item in select_candidate_targets(signals, limit=5)]
 
     return {
         "files": len(signals),

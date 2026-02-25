@@ -60,3 +60,70 @@ def test_analyze_file_does_not_treat_import_volume_as_strong_integration_risk():
 
     # High import count alone should not collapse integration confidence.
     assert result.integration_score_hint >= 85
+
+
+def test_feature_stage_pipeline_builds_expected_explanations():
+    module = _load_extract_module()
+    source = (
+        "contract C {\n"
+        "  function run(uint256 n) external pure returns (bytes32 h) {\n"
+        "    for (uint256 i = 0; i < n; i++) {\n"
+        "      h = keccak256(abi.encodePacked(h, i));\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
+
+    cleaned = module.strip_comments(source)
+    counts = module.extract_feature_counts(cleaned)
+    upside, portability, integration = module.score_feature_counts(counts)
+    archetype, positives, risks = module.assemble_signal_explanations(
+        counts,
+        upside_score_hint=upside,
+        integration_score_hint=integration,
+    )
+
+    assert counts.loops >= 1
+    assert counts.hash_ops >= 1
+    assert upside >= 65
+    assert portability >= 80
+    assert integration >= 70
+    assert archetype in {"crypto-heavy", "isolated-utility-or-mixed"}
+    assert "low-external-coupling" in positives
+    assert risks == []
+
+
+def test_candidate_selection_and_explanation_prefers_higher_hint_scores():
+    module = _load_extract_module()
+
+    high = module.analyze_file(
+        Path("contracts/High.sol"),
+        (
+            "contract High {\n"
+            "  function x(uint256 n) external pure returns (bytes32 h) {\n"
+            "    for (uint256 i = 0; i < n; i++) { h = keccak256(abi.encodePacked(h, i)); }\n"
+            "  }\n"
+            "}\n"
+        ),
+    )
+    low = module.analyze_file(
+        Path("contracts/Low.sol"),
+        (
+            "interface IERC20 { function transfer(address to, uint256 amount) external returns (bool); }\n"
+            "contract Low {\n"
+            "  mapping(address => uint256) public balances;\n"
+            "  address public implementation;\n"
+            "  function settle(address t, address to, uint256 a) external { IERC20(t).transfer(to, a); }\n"
+            "  function exec(bytes calldata d) external { (bool ok, ) = implementation.delegatecall(d); require(ok); }\n"
+            "}\n"
+        ),
+    )
+
+    selected = module.select_candidate_targets([low, high], limit=1)
+    assert selected
+    assert selected[0].path.endswith("High.sol")
+
+    explanation = module.build_candidate_explanation(selected[0])
+    assert explanation["path"].endswith("High.sol")
+    assert isinstance(explanation["hint_score"], int)
+    assert explanation["reason"]
