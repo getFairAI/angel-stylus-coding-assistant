@@ -1,0 +1,16 @@
+[run]
+branch = True
+source = src
+omit =
+    src/data_*ingestion.py
+    src/run_all_data_ingestions.py
+    src/fill_chroma.py
+    src/debug_chroma_query.py
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 2
+exclude_lines =
+    pragma: no cover
+    if __name__ == "__main__":

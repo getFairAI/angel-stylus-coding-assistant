@@ -155,6 +155,96 @@ def test_extract_local_target_prompt_paraphrase_stability(monkeypatch, tmp_path)
     assert all(item == target.resolve() for item in results)
 
 
+def test_clone_repo_retries_without_branch_on_failure(monkeypatch, tmp_path):
+    target = {
+        "owner": "acme",
+        "repo": "core",
+        "branch": "feature-x",
+        "clone_url": "https://github.com/acme/core.git",
+    }
+    monkeypatch.setattr(contract_analysis, "CLONE_CACHE_DIR", tmp_path / "cache")
+
+    calls = []
+
+    class _Result:
+        def __init__(self, returncode, stderr="", stdout=""):
+            self.returncode = returncode
+            self.stderr = stderr
+            self.stdout = stdout
+
+    def fake_run(cmd, capture_output=True, text=True, timeout=150, check=False):
+        calls.append(cmd)
+        # First clone (with branch) fails, retry succeeds.
+        if len(calls) == 1:
+            return _Result(1, stderr="missing branch")
+        return _Result(0)
+
+    monkeypatch.setattr(contract_analysis.subprocess, "run", fake_run)
+
+    repo_dir = contract_analysis._clone_repo(target)
+
+    assert repo_dir.name.startswith("acme-core-")
+    assert len(calls) == 2
+    assert "--branch" in calls[0]
+    assert "--branch" not in calls[1]
+
+
+def test_analyze_github_target_builds_summary_refs_and_cache(monkeypatch, tmp_path):
+    repo_dir = tmp_path / "repo"
+    contracts_dir = repo_dir / "contracts"
+    contracts_dir.mkdir(parents=True)
+    target_file = contracts_dir / "Pool.sol"
+    target_file.write_text("contract Pool {}", encoding="utf-8")
+
+    target = {
+        "mode": "github_repo",
+        "owner": "uniswap",
+        "repo": "v3-core",
+        "branch": "main",
+        "subpath": "contracts",
+        "source_url": "https://github.com/uniswap/v3-core",
+        "repo_url": "https://github.com/uniswap/v3-core",
+        "clone_url": "https://github.com/uniswap/v3-core.git",
+    }
+
+    extractor_payload = {
+        "aggregate": {
+            "files": 1,
+            "contracts": 1,
+            "hints": {"final": 73, "upside": 81, "portability": 70, "integration": 58},
+        },
+        "files": [
+            {
+                "path": str(target_file),
+                "contract_names": ["Pool"],
+                "archetype_hint": "compute",
+                "upside_score_hint": 81,
+                "portability_score_hint": 70,
+                "integration_score_hint": 58,
+                "positive_signals": ["high-compute-signals"],
+                "risk_signals": ["high-external-call-fanout"],
+            }
+        ],
+    }
+
+    monkeypatch.setattr(contract_analysis, "_clone_repo", lambda _target: repo_dir)
+    monkeypatch.setattr(contract_analysis, "_detect_repo_branch", lambda _repo, fallback="main": "main")
+    monkeypatch.setattr(contract_analysis, "_run_extractor", lambda _path: extractor_payload)
+    monkeypatch.setattr(contract_analysis, "_ANALYSIS_CACHE", {})
+
+    result_first = contract_analysis._analyze_github_target(target)
+    result_cached = contract_analysis._analyze_github_target(target)
+
+    assert result_first["cache_hit"] is False
+    assert result_first["mode"] == "github_repo"
+    assert result_first["high_targets"]
+    assert any(ref["url"].startswith("https://github.com/uniswap/v3-core/blob/main/") for ref in result_first["references"])
+    assert "High stylus benefit candidates (heuristic):" in result_first["summary"]
+
+    assert result_cached["cache_hit"] is True
+    assert result_cached["target"] == result_first["target"]
+
+
 def test_select_targets_prefers_production_contract_paths():
     rows = [
         {"path": "test/FastPath.t.sol", "hint_score": 92, "archetype_hint": "compute"},

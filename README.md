@@ -120,8 +120,10 @@ Runtime note:
 Repo-level checks:
 
 ```bash
-python -m pytest -q
+python -m pytest
 ```
+
+`pytest` now runs with coverage reporting and an `80%` fail-under gate for backend runtime modules (configured via `pytest.ini` + `.coveragerc`).
 
 Workspace-level check (if using paired workspace scripts):
 
