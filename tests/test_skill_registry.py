@@ -1,0 +1,169 @@
+from ast import literal_eval
+from pathlib import Path
+
+import skill_registry
+
+
+def _read_default_prompt(skill_id):
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "skills"
+        / skill_id
+        / "agents"
+        / "openai.yaml"
+    )
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line.startswith("default_prompt:"):
+            return str(literal_eval(line.split("default_prompt:", 1)[1].strip()))
+    raise AssertionError(f"default_prompt not found in {path}")
+
+
+def test_research_skill_enables_research_contract(monkeypatch):
+    captured = {}
+
+    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000):
+        captured["prompt"] = prompt
+        captured["include_research_contract"] = include_research_contract
+        captured["max_chars"] = max_chars
+        return {"found": True}
+
+    monkeypatch.setattr(skill_registry, "retrieve_stylus_context", fake_retrieve)
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_RESEARCH,
+        "latest tools",
+    )
+
+    assert payload["skill"] == skill_registry.SKILL_ID_RESEARCH
+    assert isinstance(payload["skill_system_prompt"], str)
+    assert payload["skill_system_prompt"]
+    assert len(payload["skill_behavior_hash"]) == 64
+    assert captured["prompt"] == "latest tools"
+    assert captured["include_research_contract"] is True
+
+
+def test_porting_skill_disables_research_contract(monkeypatch):
+    captured = {}
+
+    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000):
+        captured["prompt"] = prompt
+        captured["include_research_contract"] = include_research_contract
+        captured["max_chars"] = max_chars
+        return {"found": True}
+
+    monkeypatch.setattr(skill_registry, "retrieve_stylus_context", fake_retrieve)
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_PORTING_AUDITOR,
+        "candidate analysis",
+    )
+
+    assert payload["skill"] == skill_registry.SKILL_ID_PORTING_AUDITOR
+    assert isinstance(payload["skill_system_prompt"], str)
+    assert payload["skill_system_prompt"]
+    assert len(payload["skill_behavior_hash"]) == 64
+    assert captured["prompt"] == "candidate analysis"
+    assert captured["include_research_contract"] is False
+
+
+def test_published_prompt_is_source_of_truth():
+    research = skill_registry.get_skill(skill_registry.SKILL_ID_RESEARCH)
+    porting = skill_registry.get_skill(skill_registry.SKILL_ID_PORTING_AUDITOR)
+
+    assert research is not None
+    assert porting is not None
+
+    assert research.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_RESEARCH)
+    assert porting.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_PORTING_AUDITOR)
+
+
+def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
+    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000):
+        return {
+            "found": True,
+            "context": "Top references:\n1. [Existing](https://example.com/existing)",
+            "references": [
+                {
+                    "title": "Existing",
+                    "url": "https://example.com/existing",
+                    "source": "existing",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(skill_registry, "retrieve_stylus_context", fake_retrieve)
+    monkeypatch.setattr(
+        skill_registry,
+        "analyze_contract_target",
+        lambda _prompt: {
+            "mode": "github_repo",
+            "target": "https://github.com/example/repo",
+            "aggregate": {
+                "files": 2,
+                "contracts": 2,
+                "hints": {"final": 67},
+            },
+            "high_targets": [
+                {
+                    "path": "contracts/A.sol",
+                    "hint_score": 82,
+                    "positive_drivers": ["compute-heavy paths"],
+                    "risk_drivers": [],
+                }
+            ],
+            "low_targets": [
+                {
+                    "path": "contracts/B.sol",
+                    "hint_score": 33,
+                    "positive_drivers": [],
+                    "risk_drivers": ["high integration coupling"],
+                }
+            ],
+            "driver_totals": {
+                "positive": [{"driver": "compute-heavy paths", "count": 1}],
+                "risk": [{"driver": "high integration coupling", "count": 1}],
+            },
+            "summary": "Static contract analysis summary.",
+            "references": [
+                {
+                    "title": "Source Repo",
+                    "url": "https://github.com/example/repo",
+                    "source": "analysis",
+                }
+            ],
+        },
+    )
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_PORTING_AUDITOR,
+        "Analyze https://github.com/example/repo",
+    )
+
+    assert payload["skill"] == skill_registry.SKILL_ID_PORTING_AUDITOR
+    assert payload["analysis_brief"].startswith("Porting analysis brief:")
+    assert payload["context"].startswith("Porting analysis brief:")
+    assert "Static contract analysis summary." in payload["context"]
+    assert payload["codebase_analysis"]["mode"] == "github_repo"
+    assert payload["references"][0]["url"] == "https://github.com/example/repo"
+    assert "References:" in payload["references_markdown"]
+
+
+def test_research_skill_does_not_run_codebase_analysis(monkeypatch):
+    monkeypatch.setattr(
+        skill_registry,
+        "analyze_contract_target",
+        lambda _prompt: (_ for _ in ()).throw(AssertionError("should not be called")),
+    )
+    monkeypatch.setattr(
+        skill_registry,
+        "retrieve_stylus_context",
+        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+    )
+
+    payload = skill_registry.run_skill_search(
+        skill_registry.SKILL_ID_RESEARCH,
+        "latest stylus tools",
+    )
+
+    assert payload["skill"] == skill_registry.SKILL_ID_RESEARCH

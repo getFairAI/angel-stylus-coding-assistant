@@ -1,10 +1,18 @@
+from ast import literal_eval
 from dataclasses import dataclass
+import hashlib
+from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from contract_analysis import analyze_contract_target
 from retrieve_chroma_docs import retrieve_stylus_context
 
 SKILL_ID_RESEARCH = "sift-stylus-research"
 SKILL_ID_PORTING_AUDITOR = "sift-stylus-porting-auditor"
+DEFAULT_GENERIC_SYSTEM_PROMPT = (
+    "You are Sifter. Use the selected skill's retrieval tool before final answers when evidence is needed. "
+    "Prefer concrete references and state uncertainty clearly when evidence is limited."
+)
 
 
 @dataclass(frozen=True)
@@ -12,11 +20,144 @@ class SkillDefinition:
     skill_id: str
     label: str
     description: str
+    system_prompt: str
+    behavior_hash: str
     search_handler: Callable[[str], dict]
 
 
+def _skill_prompt_path(skill_id: str) -> Path:
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / "skills" / skill_id / "agents" / "openai.yaml"
+
+
+def _skill_doc_path(skill_id: str) -> Path:
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / "skills" / skill_id / "SKILL.md"
+
+
+def _skill_output_schema_path(skill_id: str) -> Path:
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / "skills" / skill_id / "references" / "output-schema.md"
+
+
+def _compute_behavior_hash(skill_id: str) -> str:
+    hasher = hashlib.sha256()
+    paths = [
+        _skill_doc_path(skill_id),
+        _skill_prompt_path(skill_id),
+        _skill_output_schema_path(skill_id),
+    ]
+
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        hasher.update(str(path.name).encode("utf-8"))
+        hasher.update(b"\n")
+        hasher.update(content.encode("utf-8"))
+        hasher.update(b"\n")
+
+    digest = hasher.hexdigest()
+    return digest if digest else "0" * 64
+
+
+def _load_skill_system_prompt(skill_id: str) -> str:
+    path = _skill_prompt_path(skill_id)
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return DEFAULT_GENERIC_SYSTEM_PROMPT
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("default_prompt:"):
+            continue
+
+        prompt_literal = line.split("default_prompt:", 1)[1].strip()
+        if not prompt_literal:
+            break
+        try:
+            if prompt_literal[0] in ("'", '"'):
+                return str(literal_eval(prompt_literal))
+        except Exception:
+            return prompt_literal
+        return prompt_literal
+
+    return DEFAULT_GENERIC_SYSTEM_PROMPT
+
+
 def _run_shared_retrieval(prompt: str) -> dict:
-    return retrieve_stylus_context(prompt)
+    return retrieve_stylus_context(prompt, include_research_contract=True)
+
+
+def _run_porting_retrieval(prompt: str) -> dict:
+    return retrieve_stylus_context(prompt, include_research_contract=False)
+
+
+def _driver_list(values, max_items: int = 3) -> str:
+    if not isinstance(values, list):
+        return ""
+    items = [str(item).strip() for item in values if str(item).strip()]
+    return ", ".join(items[:max_items])
+
+
+def _build_analysis_brief(analysis: dict) -> str:
+    if not isinstance(analysis, dict):
+        return ""
+
+    mode = str(analysis.get("mode") or "").strip()
+    target = str(analysis.get("target") or "").strip()
+    aggregate = analysis.get("aggregate") or {}
+    hints = aggregate.get("hints") or {}
+    high_targets = analysis.get("high_targets") or []
+    low_targets = analysis.get("low_targets") or []
+    driver_totals = analysis.get("driver_totals") or {}
+
+    lines = ["Porting analysis brief:"]
+    if mode or target:
+        descriptor = " | ".join(item for item in [f"mode={mode}" if mode else "", target] if item)
+        if descriptor:
+            lines.append(f"- Target: {descriptor}")
+
+    files = aggregate.get("files")
+    contracts = aggregate.get("contracts")
+    final = hints.get("final")
+    if files is not None and contracts is not None and final is not None:
+        lines.append(f"- Coverage: files={files}, contracts={contracts}, final_hint={final}")
+
+    if high_targets:
+        top = high_targets[0]
+        lines.append(
+            (
+                f"- Top high-benefit candidate: {top.get('path')} "
+                f"(score={top.get('hint_score')}, drivers={_driver_list(top.get('positive_drivers'))})"
+            )
+        )
+    if low_targets:
+        top = low_targets[0]
+        lines.append(
+            (
+                f"- Top low-impact candidate: {top.get('path')} "
+                f"(score={top.get('hint_score')}, risks={_driver_list(top.get('risk_drivers'))})"
+            )
+        )
+
+    positive_totals = driver_totals.get("positive") or []
+    risk_totals = driver_totals.get("risk") or []
+    if positive_totals and isinstance(positive_totals, list):
+        top = positive_totals[0]
+        if isinstance(top, dict):
+            lines.append(f"- Most common positive driver: {top.get('driver')} ({top.get('count')})")
+    if risk_totals and isinstance(risk_totals, list):
+        top = risk_totals[0]
+        if isinstance(top, dict):
+            lines.append(f"- Most common risk driver: {top.get('driver')} ({top.get('count')})")
+
+    return "\n".join(lines)
 
 
 SKILL_REGISTRY: Dict[str, SkillDefinition] = {
@@ -24,6 +165,8 @@ SKILL_REGISTRY: Dict[str, SkillDefinition] = {
         skill_id=SKILL_ID_RESEARCH,
         label="Stylus Research",
         description="References-first research for Arbitrum Stylus tooling and ecosystem questions.",
+        system_prompt=_load_skill_system_prompt(SKILL_ID_RESEARCH),
+        behavior_hash=_compute_behavior_hash(SKILL_ID_RESEARCH),
         search_handler=_run_shared_retrieval,
     ),
     SKILL_ID_PORTING_AUDITOR: SkillDefinition(
@@ -32,7 +175,9 @@ SKILL_REGISTRY: Dict[str, SkillDefinition] = {
         description=(
             "Impact-focused candidacy checks for hybrid Solidity and Stylus architectures."
         ),
-        search_handler=_run_shared_retrieval,
+        system_prompt=_load_skill_system_prompt(SKILL_ID_PORTING_AUDITOR),
+        behavior_hash=_compute_behavior_hash(SKILL_ID_PORTING_AUDITOR),
+        search_handler=_run_porting_retrieval,
     ),
 }
 
@@ -47,6 +192,10 @@ def list_skills() -> List[dict]:
             "id": item.skill_id,
             "label": item.label,
             "description": item.description,
+            "system_prompt": item.system_prompt,
+            "prompt_source": f"skills/{item.skill_id}/agents/openai.yaml#default_prompt",
+            "skill_doc_path": f"skills/{item.skill_id}/SKILL.md",
+            "behavior_hash": item.behavior_hash,
             "search_path": f"/skills/{item.skill_id}/search",
         }
         for item in SKILL_REGISTRY.values()
@@ -61,4 +210,49 @@ def run_skill_search(skill_id: str, prompt: str) -> dict:
     payload = skill.search_handler(prompt)
     if isinstance(payload, dict):
         payload.setdefault("skill", skill_id)
+        payload.setdefault("skill_system_prompt", skill.system_prompt)
+        payload.setdefault("skill_behavior_hash", skill.behavior_hash)
+
+        if skill_id == SKILL_ID_PORTING_AUDITOR:
+            analysis = analyze_contract_target(prompt)
+            if isinstance(analysis, dict):
+                payload["codebase_analysis"] = analysis
+                brief = _build_analysis_brief(analysis)
+                if brief:
+                    payload["analysis_brief"] = brief
+
+                summary = str(analysis.get("summary") or "").strip()
+                analysis_context = "\n\n".join(part for part in [brief, summary] if part).strip()
+                if analysis_context:
+                    base_context = str(payload.get("context") or "").strip()
+                    payload["context"] = (
+                        f"{analysis_context}\n\n{base_context}" if base_context else analysis_context
+                    )
+
+                analysis_refs = analysis.get("references") or []
+                if isinstance(analysis_refs, list) and analysis_refs:
+                    existing_refs = payload.get("references") or []
+                    if isinstance(existing_refs, list):
+                        merged = []
+                        seen_urls = set()
+                        for ref in [*analysis_refs, *existing_refs]:
+                            url = str(ref.get("url") or "").strip()
+                            if not url.startswith("http"):
+                                continue
+                            if url in seen_urls:
+                                continue
+                            seen_urls.add(url)
+                            merged.append(
+                                {
+                                    "title": str(ref.get("title") or "Reference").strip(),
+                                    "url": url,
+                                    "source": str(ref.get("source") or "analysis"),
+                                }
+                            )
+                        if merged:
+                            payload["references"] = merged
+                            lines = ["References:"]
+                            for ref in merged[:12]:
+                                lines.append(f"- [{ref['title']}]({ref['url']})")
+                            payload["references_markdown"] = "\n".join(lines)
     return payload
