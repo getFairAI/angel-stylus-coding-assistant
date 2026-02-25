@@ -50,12 +50,18 @@ NON_PRODUCTION_DIRS = {
     "tests",
     "mock",
     "mocks",
+    "bench",
+    "benchmarks",
+    "benchmark",
+    "benches",
     "example",
     "examples",
     "script",
     "scripts",
     "audit",
     "audits",
+    "doc",
+    "docs",
     "crytic",
 }
 
@@ -206,6 +212,7 @@ def _score_hints(
 ) -> tuple[int, int, int]:
     compute_raw = (loops * 3.0) + (hash_ops * 5.0) + (crypto_terms * 6.0) + (abi_ops * 1.5)
     storage_raw = (mapping_decl * 3.5) + (storage_kw * 1.0)
+    boundary_complexity_raw = (delegatecalls * 4.0) + (proxy_terms * 1.5)
 
     # v2: prioritize true boundary/call complexity.
     # Imports are treated as migration-surface complexity, not runtime integration risk.
@@ -224,7 +231,13 @@ def _score_hints(
         + min(imports * 0.35, 8.0)
     )
 
-    upside_score_hint = clamp_score(48 + (compute_raw * 2.1) - (storage_raw * 0.85) - (coupling_raw * 0.45))
+    upside_score_hint = clamp_score(
+        48
+        + (compute_raw * 2.1)
+        - (storage_raw * 0.85)
+        - (coupling_raw * 0.45)
+        - boundary_complexity_raw
+    )
     portability_score_hint = clamp_score(100 - portability_penalty)
     integration_score_hint = clamp_score(
         100
