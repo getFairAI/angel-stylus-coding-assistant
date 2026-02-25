@@ -8,6 +8,10 @@ import time
 import os
 import requests
 
+from augmentation_contract import (
+    build_porting_augmentation_contract,
+    validate_porting_augmentation,
+)
 from basic_logs import write_request_log
 from skill_registry import (
     SKILL_ID_PORTING_AUDITOR,
@@ -48,6 +52,10 @@ app.add_middleware(
 
 class StylusRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
+
+
+class PortingAugmentationValidationRequest(BaseModel):
+    augmentation: object
 
 
 def prompt_preview(value: str, max_chars: int = 180) -> str:
@@ -105,6 +113,17 @@ def stylus_chat(request: StylusRequest):
 @app.post("/stylus-porting-audit")
 def stylus_porting_audit(request: StylusRequest):
     return execute_skill_search(SKILL_ID_PORTING_AUDITOR, request)
+
+
+@app.post("/skills/sift-stylus-porting-auditor/validate-augmentation")
+def validate_porting_augmentation_endpoint(request: PortingAugmentationValidationRequest):
+    contract = build_porting_augmentation_contract()
+    validated = validate_porting_augmentation(request.augmentation, contract=contract)
+    return {
+        "skill": SKILL_ID_PORTING_AUDITOR,
+        "llm_augmentation_contract": contract,
+        "llm_augmentation": validated,
+    }
 
 
 @app.post("/openrouter/chat/completions")

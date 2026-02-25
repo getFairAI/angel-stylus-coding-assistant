@@ -455,7 +455,11 @@ def build_references_markdown(references, max_items=12):
     return "\n".join(lines)
 
 
-def retrieve_stylus_context(user_prompt: str, max_chars: int = 10000):
+def retrieve_stylus_context(
+    user_prompt: str,
+    max_chars: int = 10000,
+    include_research_contract: bool = True,
+):
     """
     Retrieve relevant Stylus documentation context for a given user query.
 

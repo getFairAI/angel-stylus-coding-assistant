@@ -65,6 +65,53 @@ def test_porting_audit_alias_uses_porting_skill(monkeypatch):
     assert response.json()["skill"] == "sift-stylus-porting-auditor"
 
 
+def test_validate_porting_augmentation_endpoint_fallback():
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/skills/sift-stylus-porting-auditor/validate-augmentation",
+        json={"augmentation": "not-an-object"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["skill"] == "sift-stylus-porting-auditor"
+    assert payload["llm_augmentation_contract"]["mode"] == "bounded_second_pass"
+    assert payload["llm_augmentation"]["mode"] == "static_only_fallback"
+    assert payload["llm_augmentation"]["validation"]["reason"] == "augmentation_payload_must_be_object"
+
+
+def test_validate_porting_augmentation_endpoint_success():
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/skills/sift-stylus-porting-auditor/validate-augmentation",
+        json={
+            "augmentation": {
+                "additional_good_fit_signals": [
+                    {
+                        "contract": "contracts/ComputeHeavy.sol",
+                        "signal": "hash-heavy critical path",
+                        "confidence": "high",
+                        "citations": ["https://example.com/bench"],
+                    }
+                ],
+                "additional_bad_fit_signals": [],
+                "recommended_carveouts": [],
+                "confidence": "medium",
+                "citations": ["https://example.com/summary"],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["skill"] == "sift-stylus-porting-auditor"
+    assert payload["llm_augmentation"]["mode"] == "bounded_second_pass"
+    assert payload["llm_augmentation"]["additional_good_fit_signals"][0]["contract"] == (
+        "contracts/ComputeHeavy.sol"
+    )
+    assert payload["llm_augmentation"]["validation"]["status"] == "valid"
+
+
 def test_openrouter_proxy_requires_backend_api_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     client = TestClient(app_module.app)
