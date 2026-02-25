@@ -78,6 +78,7 @@ def test_published_prompt_is_source_of_truth():
     assert porting.system_prompt == _read_default_prompt(skill_registry.SKILL_ID_PORTING_AUDITOR)
     assert "analysis_action_paths" in porting.system_prompt
     assert "llm_augmentation_contract" in porting.system_prompt
+    assert "upside-first recommendation" in porting.system_prompt
 
 
 def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
@@ -181,6 +182,7 @@ def test_build_analysis_action_paths_handles_missing_analysis():
     paths = skill_registry._build_analysis_action_paths({})
     assert isinstance(paths, list)
     assert len(paths) >= 3
+    assert any(item.get("id") == "upside_first_framing" for item in paths)
     assert "Porting action paths:" in skill_registry._render_analysis_action_paths(paths)
     assert skill_registry._render_analysis_action_paths([]) == ""
 

@@ -109,6 +109,9 @@ Follow `references/output-schema.md`.
 
 At minimum include:
 - High-level recommendation first (prose, 3-6 sentences) before any numeric analysis.
+- Keep the high-level recommendation upside-first:
+  - Lead with where Stylus can add value (compute hotspots, carveout opportunities, likely directional gains).
+  - Do not open with a fault/caveat-only narrative, even for `defer` verdicts.
 - Explicit recommendation stance in that prose: `port now`, `pilot first`, or `defer`.
 - Explicit impact verdicts:
 - `high_stylus_benefit`
@@ -120,6 +123,9 @@ At minimum include:
   - Label confidence (`high|medium|low`) and why.
 - Candidate summary.
 - Score breakdown.
+- Potential upside snapshot:
+  - At least one concrete "where Stylus could still help" point per analyzed target set.
+  - If overall verdict is low-impact, still include at least one bounded pilot/carveout suggestion.
 - Evidence-backed good/bad signal findings.
 - Bounded LLM augmentation outputs (when provided by backend contract):
   - `additional_good_fit_signals`

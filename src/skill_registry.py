@@ -174,6 +174,14 @@ def _build_analysis_action_paths(analysis: dict) -> list:
 
     action_paths = [
         {
+            "id": "upside_first_framing",
+            "instruction": (
+                "Lead with concrete Stylus upside opportunities first (compute hotspots, directional "
+                "percent gains, and pilot carveouts), then cover risks as mitigation items."
+            ),
+            "evidence": "high_targets + driver_totals.positive",
+        },
+        {
             "id": "source_scope",
             "instruction": (
                 "Confirm scope from the analyzed target and treat static findings as directional, "
@@ -193,7 +201,7 @@ def _build_analysis_action_paths(analysis: dict) -> list:
             "id": "boundary_risk_check",
             "instruction": (
                 "Use risk drivers and low-impact selections to call out boundary/interface risks that should "
-                "remain in Solidity unless mitigated."
+                "remain in Solidity unless mitigated, and pair each risk with a concrete mitigation path."
             ),
             "evidence": "risk_drivers + low_targets",
         },
