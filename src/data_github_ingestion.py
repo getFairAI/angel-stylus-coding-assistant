@@ -1,14 +1,16 @@
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+import re
+from urllib.parse import urlparse
 import requests
 
 # List of GitHub repositories to ingest (owner/repo)
 REPOS = [
     "OffchainLabs/cargo-stylus",
-    "OffchainLabs/awesome-stylus/",
-    "OffchainLabs/stylus-sdk-rs"
+    "OffchainLabs/awesome-stylus",
+    "OffchainLabs/stylus-sdk-rs",
 ]
 
 # Output JSON file path
@@ -17,6 +19,21 @@ OUTPUT_JSON_PATH = "data/github_readmes_sectioned.json"
 HEADERS = {
     "User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"
 }
+
+VIDEO_HOST_KEYWORDS = (
+    "youtube.com",
+    "youtu.be",
+    "vimeo.com",
+    "loom.com",
+)
+VIDEO_EXTENSIONS = (
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".webm",
+    ".gif",
+)
 
 # ---------------------------------------------
 # IO helpers
@@ -51,6 +68,149 @@ def fetch_repo_readme_markdown(repo_slug: str) -> str:
             last_error = e
 
     raise RuntimeError(f"Failed to fetch README.md for {repo_slug}: {last_error}")
+
+
+# ---------------------------------------------
+# Linked resources (for awesome-stylus)
+# ---------------------------------------------
+def extract_markdown_links(markdown: str) -> List[Tuple[str, str]]:
+    """
+    Extract (text, url) tuples from markdown link syntax [text](url).
+    Skips anchors and mailto links.
+    """
+    links: List[Tuple[str, str]] = []
+    pattern = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+    for match in pattern.finditer(markdown):
+        text, url = match.group(1), match.group(2)
+        if url.startswith("#") or url.startswith("mailto:"):
+            continue
+        links.append((text, url))
+    return links
+
+
+def is_video_url(url: str) -> bool:
+    parsed = urlparse(url.lower())
+    if parsed.netloc and any(host in parsed.netloc for host in VIDEO_HOST_KEYWORDS):
+        return True
+    return parsed.path.endswith(VIDEO_EXTENSIONS)
+
+
+def resolve_repo_relative_url(repo_slug: str, url: str) -> str:
+    """
+    Convert relative GitHub README links into raw file URLs on main branch.
+    If an absolute GitHub blob URL is provided, convert it to the raw form.
+    If an absolute GitHub link points to a repo or file without blob/raw,
+    generate best-effort raw URLs (main then master).
+    Otherwise return the original absolute URL.
+    """
+    if url.startswith("http://") or url.startswith("https://"):
+        parsed = urlparse(url)
+        path_parts = parsed.path.split("/")
+        if parsed.netloc == "github.com" and len(path_parts) >= 3:
+            owner, repo = path_parts[1], path_parts[2]
+
+            # Case: explicit blob URL
+            if "/blob/" in parsed.path and len(path_parts) >= 6:
+                branch = path_parts[4]
+                remaining_path = "/".join(path_parts[5:])
+                return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{remaining_path}"
+
+            # Case: repo root or path without branch -> assume main/master
+            path_after_repo = path_parts[3:]  # may be empty
+            relative_path = "/".join(path_after_repo)
+            branch_candidates = ["main", "master"]
+
+            for branch in branch_candidates:
+                if relative_path:
+                    candidate = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{relative_path}"
+                else:
+                    candidate = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/README.md"
+                # We return the first candidate; caller will attempt fetch and fall back if needed.
+                return candidate
+
+        return url
+
+    owner, repo = repo_slug.split("/", 1)
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/main/{url.lstrip('./')}"
+
+
+def fetch_link_content(url: str) -> Optional[str]:
+    """
+    Fetch a linked resource. If the URL is a GitHub raw candidate, try main then master.
+    Returns text content or None if unsuitable.
+    """
+    candidate_urls = [url]
+    last_error: Optional[Exception] = None
+
+    # If the URL was best-effort guessed for GitHub main/master, include the alternate branch as fallback
+    if "raw.githubusercontent.com" in url and "/main/" in url:
+        candidate_urls.append(url.replace("/main/", "/master/", 1))
+    elif "raw.githubusercontent.com" in url and "/master/" in url:
+        candidate_urls.append(url.replace("/master/", "/main/", 1))
+
+    for candidate in candidate_urls:
+        try:
+            resp = requests.get(candidate, headers=HEADERS, timeout=20)
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "").lower()
+            if not content_type.startswith("text/") and "json" not in content_type and "markdown" not in content_type:
+                print(f"[info] Skipping non-text resource {candidate} (content-type={content_type})")
+                return None
+            return resp.text
+        except Exception as e:
+            last_error = e
+            continue
+
+    print(f"[warn] Failed to fetch linked resource {url}: {last_error}")
+    return None
+
+
+def build_entries_for_links(repo_slug: str, readme_url: str, markdown: str) -> List[Dict[str, Any]]:
+    """
+    For the awesome-stylus repo, follow README links and ingest linked text resources.
+    Videos are skipped. Each linked document becomes a separate entry.
+    """
+    entries: List[Dict[str, Any]] = []
+    now_iso = datetime.utcnow().isoformat() + "Z"
+
+    for link_text, link_url in extract_markdown_links(markdown):
+        resolved_url = resolve_repo_relative_url(repo_slug, link_url)
+        if is_video_url(resolved_url):
+            continue
+
+        content = fetch_link_content(resolved_url)
+        if not content:
+            continue
+
+        header_lines = [
+            "Source: GitHub README Linked Resource",
+            f"Repo: {repo_slug}",
+            f"README URL: {readme_url}",
+            f"Link Text: {link_text}",
+            f"Linked URL: {resolved_url}",
+        ]
+        header_text = "\n".join(header_lines)
+
+        entries.append(
+            {
+                "text": f"{header_text}\n\n{content}",
+                "metadata": {
+                    "source": "github_readme_linked",
+                    "repo": repo_slug,
+                    "repo_url": f"https://github.com/{repo_slug}",
+                    "linked_url": resolved_url,
+                    "linked_text": link_text,
+                    "ingested_at": now_iso,
+                },
+            }
+        )
+
+    if entries:
+        print(f"[ok] Added {len(entries)} linked resources for {repo_slug}")
+    else:
+        print("[info] No linked resources ingested (after filtering videos/broken links)")
+
+    return entries
 
 # ---------------------------------------------
 # Parse README into sections (## / ###)
@@ -200,6 +360,12 @@ def ingest_github_readmes():
         repo_entries = build_entries_for_repo(repo_slug, sections)
         all_entries.extend(repo_entries)
         print(f"[ok] Added {len(repo_entries)} entries for {repo_slug}")
+
+        # Special handling: follow linked resources in awesome-stylus
+        if repo_slug.lower().endswith("awesome-stylus"):
+            readme_url = f"https://raw.githubusercontent.com/{repo_slug}/main/README.md"
+            link_entries = build_entries_for_links(repo_slug, readme_url, markdown)
+            all_entries.extend(link_entries)
 
     save_entries(OUTPUT_JSON_PATH, all_entries)
     print(f"[ok] Saved {len(all_entries)} total entries to {OUTPUT_JSON_PATH}")

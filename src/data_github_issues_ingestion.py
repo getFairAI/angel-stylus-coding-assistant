@@ -4,7 +4,6 @@ import time
 import requests
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-import sys
 from dotenv import load_dotenv
 
 # load variables from .env
@@ -17,27 +16,21 @@ load_dotenv()
 
 REPOS = [
     "OffchainLabs/cargo-stylus",
-    "OffchainLabs/awesome-stylus/",
-    "OffchainLabs/stylus-sdk-rs"
+    "OffchainLabs/awesome-stylus",
+    "OffchainLabs/stylus-sdk-rs",
 ]
 
 # Output JSON file path
 OUTPUT_JSON_PATH = "data/github_issues_sectioned.json"
-OUTPUT_LAST_SYNCED_PATH= "logs/last_ingestion_sync.json"
+OUTPUT_LAST_SYNCED_PATH = "logs/last_ingestion_sync.json"
 
-# When generating github token if needed, make sure it only has READ access to PUBLIC repositories, no other permissions are needed
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-
-if GITHUB_TOKEN is None:
-    print("Missing github token. Exiting...")
-    sys.exit(0)
-
-
-HEADERS = {
-    "Authorization": f"Bearer {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github+json",
-    "User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"
-}
+def build_headers(token: str) -> Dict[str, str]:
+    """Return GitHub API headers for the provided token."""
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)",
+    }
 
 BASE_URL = "https://api.github.com"
 GRAPHQL_URL = "https://api.github.com/graphql"
@@ -143,7 +136,7 @@ def read_sync_timestamp() -> Optional[str]:
 
     return data.get("github_issues_last_sync")
 
-def write_sync_timestamp(timestamp: str) -> None:
+def write_sync_timestamp(timestamp: int) -> None:
     os.makedirs(os.path.dirname(OUTPUT_LAST_SYNCED_PATH), exist_ok=True)
 
     with open(OUTPUT_LAST_SYNCED_PATH, "w", encoding="utf-8") as f:
@@ -156,10 +149,21 @@ def write_sync_timestamp(timestamp: str) -> None:
 def unix_to_iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
+
+def get_github_token() -> str:
+    """
+    Return a GitHub token or raise an informative error so the caller can decide
+    whether to skip this ingestion step.
+    """
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise RuntimeError("GITHUB_TOKEN is missing; export a token with read-only access to public repos.")
+    return token
+
 # ---------------------------------------------
 # Fetch Issues via GraphQL
 # ---------------------------------------------
-def fetch_repo_issues_graphql(repo_slug: str, lastSync: Optional[str]) -> List[Dict[str, Any]]:
+def fetch_repo_issues_graphql(repo_slug: str, lastSync: Optional[str], headers: Dict[str, str]) -> List[Dict[str, Any]]:
     owner, repo = repo_slug.split("/", 1)
 
     all_issues: List[Dict[str, Any]] = []
@@ -175,17 +179,23 @@ def fetch_repo_issues_graphql(repo_slug: str, lastSync: Optional[str]) -> List[D
 
         resp = requests.post(
             GRAPHQL_URL,
-            headers=HEADERS,
+            headers=headers,
             json={"query": GRAPHQL_QUERY, "variables": variables},
             timeout=30,
         )
+
+        resp.raise_for_status()
 
         data = resp.json()
         
         if "errors" in data:
             raise RuntimeError(data["errors"])
 
-        issues_data = data["data"]["repository"]["issues"]
+        repo_data = data["data"].get("repository")
+        if repo_data is None:
+            raise RuntimeError(f"Repository not found or access denied: {repo_slug}")
+
+        issues_data = repo_data["issues"]
         rate_info = data["data"]["rateLimit"]
 
         print(
@@ -296,6 +306,15 @@ def build_entries_for_issue(
 def ingest_github_issues():
     all_entries: List[Dict[str, Any]] = []
 
+    try:
+        token = get_github_token()
+    except RuntimeError as e:
+        # Don't crash the whole pipeline—surface a clear message and exit quietly
+        print(f"[warn] Skipping GitHub issues ingestion: {e}")
+        return
+
+    headers = build_headers(token)
+
     print("[sync] Reading last sync timestamp...")
     last_sync = read_sync_timestamp()
 
@@ -304,7 +323,15 @@ def ingest_github_issues():
     else:
         print("[sync] No sync file found — full ingestion")
         
-    datetime_last_sync = unix_to_iso(last_sync) if last_sync else None
+    # last_sync can be stored as int or string; normalise to int for unix->iso conversion
+    datetime_last_sync = None
+    if last_sync is not None:
+        try:
+            last_sync_int = int(last_sync)
+            datetime_last_sync = unix_to_iso(last_sync_int)
+        except (TypeError, ValueError):
+            print(f"[warn] Corrupt last sync value '{last_sync}', performing full sync")
+            datetime_last_sync = None
 
     new_sync_timestamp = int(datetime.now(tz=timezone.utc).timestamp())
     
@@ -312,7 +339,7 @@ def ingest_github_issues():
         print(f"[info] Fetching issues via GraphQL for {repo_slug}")
 
         try:
-            issues = fetch_repo_issues_graphql(repo_slug, datetime_last_sync)
+            issues = fetch_repo_issues_graphql(repo_slug, datetime_last_sync, headers)
         except Exception as e:
             print(e)
             print(f"[warn] Failed to fetch issues for {repo_slug}: {e}")
