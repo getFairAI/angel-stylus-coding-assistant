@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from retrieve_chroma_docs import retrieve_stylus_context
 
@@ -37,7 +37,7 @@ SKILL_REGISTRY: Dict[str, SkillDefinition] = {
 }
 
 
-def get_skill(skill_id: str) -> Optional[SkillDefinition]:
+def get_skill(skill_id: str) -> SkillDefinition | None:
     return SKILL_REGISTRY.get(skill_id)
 
 
