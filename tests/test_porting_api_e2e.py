@@ -75,7 +75,14 @@ def test_porting_audit_endpoint_e2e_local_codebase(monkeypatch, tmp_path):
     response = client.post(
         "/stylus-porting-audit",
         json={
-            "prompt": "Analyze ./contracts and identify high_stylus_benefit vs low_stylus_impact targets."
+            "prompt": "Analyze ./contracts and identify high_stylus_benefit vs low_stylus_impact targets.",
+            "augmentation": {
+                "additional_good_fit_signals": [],
+                "additional_bad_fit_signals": [],
+                "recommended_carveouts": [],
+                "confidence": "low",
+                "citations": ["https://example.com/summary"],
+            },
         },
     )
 

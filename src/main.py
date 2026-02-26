@@ -54,7 +54,16 @@ app.add_middleware(
 
 class StylusRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
+
+
+class SkillSearchRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
     augmentation: Optional[object] = None
+
+
+class PortingStylusRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    augmentation: object
 
 
 class PortingAugmentationValidationRequest(BaseModel):
@@ -80,16 +89,16 @@ def skills_index():
     return {"skills": list_skills()}
 
 
-def execute_skill_search(skill_id: str, request: StylusRequest):
-    preview = prompt_preview(request.prompt)
+def execute_skill_search(skill_id: str, prompt: str, augmentation: object = None):
+    preview = prompt_preview(prompt)
     write_request_log(f"User started a skill request | skill={skill_id} | Prompt preview: {preview}")
     start_time = time.time()
 
     try:
-        if request.augmentation is None:
-            result = run_skill_search(skill_id, request.prompt)
+        if augmentation is None:
+            result = run_skill_search(skill_id, prompt)
         else:
-            result = run_skill_search(skill_id, request.prompt, request.augmentation)
+            result = run_skill_search(skill_id, prompt, augmentation)
     except Exception as exc:
         write_request_log(f"[error] Skill retrieval failed | skill={skill_id} | {type(exc).__name__}: {exc}")
         result = {
@@ -110,20 +119,25 @@ def execute_skill_search(skill_id: str, request: StylusRequest):
 
 
 @app.post("/skills/{skill_id}/search")
-def skill_search(skill_id: str, request: StylusRequest):
+def skill_search(skill_id: str, request: SkillSearchRequest):
     if not get_skill(skill_id):
         raise HTTPException(status_code=404, detail=f"Unsupported skill '{skill_id}'.")
-    return execute_skill_search(skill_id, request)
+    if skill_id == SKILL_ID_PORTING_AUDITOR and request.augmentation is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Porting skill requires an 'augmentation' payload object.",
+        )
+    return execute_skill_search(skill_id, request.prompt, request.augmentation)
 
 
 @app.post("/stylus-chat")
 def stylus_chat(request: StylusRequest):
-    return execute_skill_search(SKILL_ID_RESEARCH, request)
+    return execute_skill_search(SKILL_ID_RESEARCH, request.prompt)
 
 
 @app.post("/stylus-porting-audit")
-def stylus_porting_audit(request: StylusRequest):
-    return execute_skill_search(SKILL_ID_PORTING_AUDITOR, request)
+def stylus_porting_audit(request: PortingStylusRequest):
+    return execute_skill_search(SKILL_ID_PORTING_AUDITOR, request.prompt, request.augmentation)
 
 
 @app.post("/skills/sift-stylus-porting-auditor/validate-augmentation")

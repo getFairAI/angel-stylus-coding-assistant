@@ -38,7 +38,7 @@ LLM augmentation is bounded and citation-gated:
 
 - Validation endpoint: `POST /skills/sift-stylus-porting-auditor/validate-augmentation`
 - Comparison endpoint: `POST /skills/sift-stylus-porting-auditor/compare-augmentation`
-- Standard porting search (`/stylus-porting-audit` and `/skills/.../search`) accepts optional `augmentation` and auto-applies bounded merge when valid.
+- Standard porting search (`/stylus-porting-audit` and `/skills/sift-stylus-porting-auditor/search`) requires an `augmentation` payload and auto-applies bounded merge when valid.
 
 If augmentation fails schema/citation checks, behavior falls back to static-only.
 
