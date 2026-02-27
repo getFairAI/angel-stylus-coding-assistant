@@ -91,13 +91,46 @@ OpenRouter proxy request (example):
 }
 ```
 
-## Local Run
+## Feedback
+
+- Endpoint: `POST /feedback`
+- Payload: `prompt` (string), `response` (string), `rating` (-1 | 0 | 1), optional `skill` and `metadata` (dict).
+- Side effects:
+  - Appends every event to `logs/feedback_events.jsonl` (respects `LOG_DIR` env override).
+  - Positive ratings (`1`) are also added to Chroma collection `stylus_feedback` for retrieval enrichment.
+- Example:
 
 ```bash
+curl -X POST http://localhost:8001/feedback \
+  -H "content-type: application/json" \
+  -d '{
+    "prompt":"How do I test Stylus contracts?",
+    "response":"Use cargo stylus test ...",
+    "rating":1,
+    "skill":"sift-stylus-research",
+    "metadata":{"client":"cli"}
+  }'
+```
+
+## Quickstart
+
+```bash
+# one-time setup
+python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+
+# refresh data + rebuild Chroma
 python src/run_all_data_ingestions.py
+
+# serve the API
 uvicorn main:app --app-dir src --host 0.0.0.0 --port 8001
 ```
+
+Notes:
+- Ingestion requires outbound internet access to GitHub, Arbitrum docs/blog, and OpenZeppelin docs.
+- Logs land in `logs/ingestion_logs.log`; see `src/basic_logs.py`.
+- Full pipeline details live in `src/ingestion/README.md`.
 
 To enable the LLM proxy endpoint:
 
