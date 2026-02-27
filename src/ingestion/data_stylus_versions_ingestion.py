@@ -19,6 +19,9 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 load_dotenv()
 
 REPO = "OffchainLabs/stylus-sdk-rs"
@@ -44,7 +47,7 @@ def fetch_text(url: str) -> Optional[str]:
         resp.raise_for_status()
         return resp.text
     except Exception as e:
-        print(f"[warn] Failed to fetch {url}: {e}")
+        write_ingestion_log(f"[warn] Failed to fetch {url}: {e}")
         return None
 
 
@@ -98,7 +101,7 @@ def parse_changelog(changelog_text: str) -> List[Dict]:
             buffer.append(line)
 
     flush()
-    print(f"[ok] Parsed {len(entries)} changelog versions")
+    write_ingestion_log(f"[ok] Parsed {len(entries)} changelog versions")
     return entries
 
 
@@ -129,7 +132,7 @@ def fetch_merged_prs(limit: int = 150) -> List[Dict]:
     collected: List[Dict] = []
 
     if "Authorization" not in HEADERS:
-        print("[warn] GITHUB_TOKEN is missing; PR ingestion will likely hit rate limits")
+        write_ingestion_log("[warn] GITHUB_TOKEN is missing; PR ingestion will likely hit rate limits")
 
     while len(collected) < limit:
         resp = requests.post(
@@ -142,7 +145,7 @@ def fetch_merged_prs(limit: int = 150) -> List[Dict]:
         data = resp.json()
         repo = data.get("data", {}).get("repository")
         if not repo:
-            print("[warn] Repository not found or access denied for PR fetch")
+            write_ingestion_log("[warn] Repository not found or access denied for PR fetch")
             break
 
         pr_data = repo["pullRequests"]
@@ -153,7 +156,7 @@ def fetch_merged_prs(limit: int = 150) -> List[Dict]:
             break
         cursor = pr_data["pageInfo"]["endCursor"]
 
-    print(f"[ok] Fetched {len(collected)} merged PRs (capped at {limit})")
+    write_ingestion_log(f"[ok] Fetched {len(collected)} merged PRs (capped at {limit})")
     return collected[:limit]
 
 
@@ -206,20 +209,32 @@ def ingest_stylus_versions():
     if changelog:
         entries.extend(parse_changelog(changelog))
     else:
-        print("[warn] Skipping changelog ingestion (not fetched)")
+        write_ingestion_log("[warn] Skipping changelog ingestion (not fetched)")
 
     try:
         prs = fetch_merged_prs(limit=150)
         entries.extend(build_entries_for_prs(prs))
     except Exception as e:
-        print(f"[warn] Skipping PR ingestion due to error: {e}")
+        write_ingestion_log(f"[warn] Skipping PR ingestion due to error: {e}")
+
+    existing = load_entries(OUTPUT_JSON_PATH)
+    merged, stats = merge_entries(
+        existing,
+        entries,
+        key_fn=lambda e: (
+            e.get("metadata", {}).get("type"),
+            e.get("metadata", {}).get("version") or e.get("metadata", {}).get("number"),
+        ),
+    )
 
     os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
     with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    print(f"[✔] Saved {len(entries)} version-awareness entries to {OUTPUT_JSON_PATH}")
-    return len(entries)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} version-awareness entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
+    )
+    return len(merged)
 
 
 if __name__ == "__main__":

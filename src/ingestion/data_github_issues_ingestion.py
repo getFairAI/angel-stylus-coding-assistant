@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
+from basic_logs import write_ingestion_log
+
 # load variables from .env
 load_dotenv()
 
@@ -125,7 +127,7 @@ def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(existing_entries, f, ensure_ascii=False, indent=2)
 
-    print(f"[dedupe] Added {len(filtered_new_entries)} new entries (skipped {len(new_entries) - len(filtered_new_entries)})")
+    write_ingestion_log(f"[dedupe] Added {len(filtered_new_entries)} new entries (skipped {len(new_entries) - len(filtered_new_entries)})")
 
 def read_sync_timestamp() -> Optional[str]:
     if not os.path.exists(OUTPUT_LAST_SYNCED_PATH):
@@ -198,7 +200,7 @@ def fetch_repo_issues_graphql(repo_slug: str, lastSync: Optional[str], headers: 
         issues_data = repo_data["issues"]
         rate_info = data["data"]["rateLimit"]
 
-        print(
+        write_ingestion_log(
             f"[rate] remaining={rate_info['remaining']} "
             f"cost={rate_info['cost']}"
         )
@@ -211,7 +213,7 @@ def fetch_repo_issues_graphql(repo_slug: str, lastSync: Optional[str], headers: 
         cursor = issues_data["pageInfo"]["endCursor"]
 
         if rate_info["remaining"] < 200:
-            print("[info] Low rate limit, sleeping 60s...")
+            write_ingestion_log("[info] Low rate limit, sleeping 60s...")
             time.sleep(60)
 
     return all_issues
@@ -310,18 +312,18 @@ def ingest_github_issues():
         token = get_github_token()
     except RuntimeError as e:
         # Don't crash the whole pipeline—surface a clear message and exit quietly
-        print(f"[warn] Skipping GitHub issues ingestion: {e}")
+        write_ingestion_log(f"[warn] Skipping GitHub issues ingestion: {e}")
         return
 
     headers = build_headers(token)
 
-    print("[sync] Reading last sync timestamp...")
+    write_ingestion_log("[sync] Reading last sync timestamp...")
     last_sync = read_sync_timestamp()
 
     if last_sync:
-        print(f"[sync] Incremental sync since {last_sync}")
+        write_ingestion_log(f"[sync] Incremental sync since {last_sync}")
     else:
-        print("[sync] No sync file found — full ingestion")
+        write_ingestion_log("[sync] No sync file found — full ingestion")
         
     # last_sync can be stored as int or string; normalise to int for unix->iso conversion
     datetime_last_sync = None
@@ -330,34 +332,34 @@ def ingest_github_issues():
             last_sync_int = int(last_sync)
             datetime_last_sync = unix_to_iso(last_sync_int)
         except (TypeError, ValueError):
-            print(f"[warn] Corrupt last sync value '{last_sync}', performing full sync")
+            write_ingestion_log(f"[warn] Corrupt last sync value '{last_sync}', performing full sync")
             datetime_last_sync = None
 
     new_sync_timestamp = int(datetime.now(tz=timezone.utc).timestamp())
     
     for repo_slug in REPOS:
-        print(f"[info] Fetching issues via GraphQL for {repo_slug}")
+        write_ingestion_log(f"[info] Fetching issues via GraphQL for {repo_slug}")
 
         try:
             issues = fetch_repo_issues_graphql(repo_slug, datetime_last_sync, headers)
         except Exception as e:
-            print(e)
-            print(f"[warn] Failed to fetch issues for {repo_slug}: {e}")
+            write_ingestion_log(str(e))
+            write_ingestion_log(f"[warn] Failed to fetch issues for {repo_slug}: {e}")
             continue
 
-        print(f"[info] Found {len(issues)} issues")
+        write_ingestion_log(f"[info] Found {len(issues)} issues")
 
         for issue in issues:
             entries = build_entries_for_issue(repo_slug, issue)
             all_entries.extend(entries)
 
-        print(f"[ok] Added entries for {repo_slug}")
+        write_ingestion_log(f"[ok] Added entries for {repo_slug}")
 
     save_entries(OUTPUT_JSON_PATH, all_entries)
 
     write_sync_timestamp(new_sync_timestamp)
     
-    print(f"[ok] Saved {len(all_entries)} total entries")
+    write_ingestion_log(f"[ok] Saved {len(all_entries)} total entries")
 
 
 if __name__ == "__main__":

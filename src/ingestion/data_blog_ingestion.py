@@ -6,6 +6,9 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 # Where we store all Stylus blog entries
 BLOG_JSON_PATH = "data/stylus_blog.json"
 
@@ -20,23 +23,6 @@ HEADERS = {
 
 
 # ----------------------------------------------------
-# JSON loading / saving
-# ----------------------------------------------------
-def load_existing_entries(path: str) -> List[Dict[str, Any]]:
-    """Load existing JSON entries from disk, or return empty list."""
-    if not os.path.exists(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_entries(path: str, entries: List[Dict[str, Any]]) -> None:
-    """Save updated entries to disk."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
-
-
 def get_known_urls(entries: List[Dict[str, Any]]) -> set:
     """Extract URL set from existing entries to avoid duplicates."""
     urls = set()
@@ -213,18 +199,19 @@ def build_entry(post_url: str, content: Dict[str, Any]) -> Dict[str, Any]:
 def ingest_stylus_blog():
     """Main ingestion runner."""
     # Load previous entries
-    entries = load_existing_entries(BLOG_JSON_PATH)
+    existing_entries = load_entries(BLOG_JSON_PATH)
+    entries = list(existing_entries)
     known_urls = get_known_urls(entries)
-    print(f"[info] Loaded {len(entries)} existing blog entries")
+    write_ingestion_log(f"[info] Loaded {len(entries)} existing blog entries")
 
     # Discover all post URLs across all tag pages
     all_post_urls = set()
     for tag_url in TAG_URLS:
         urls = extract_post_links_from_tag_page(tag_url)
-        print(f"[info] Found {len(urls)} posts in tag page: {tag_url}")
+        write_ingestion_log(f"[info] Found {len(urls)} posts in tag page: {tag_url}")
         all_post_urls.update(urls)
 
-    print(f"[info] Total unique post URLs discovered: {len(all_post_urls)}")
+    write_ingestion_log(f"[info] Total unique post URLs discovered: {len(all_post_urls)}")
 
     # Fetch only new posts
     new_entries = []
@@ -232,21 +219,30 @@ def ingest_stylus_blog():
         if url in known_urls:
             continue
 
-        print(f"[new] Fetching post: {url}")
+        write_ingestion_log(f"[new] Fetching post: {url}")
         try:
             content = extract_post_content(url)
             entry = build_entry(url, content)
             new_entries.append(entry)
             entries.append(entry)
         except Exception as e:
-            print(f"[warn] Failed to extract {url}: {e}")
+            write_ingestion_log(f"[warn] Failed to extract {url}: {e}")
 
     # Save only if new content was found
     if new_entries:
-        save_entries(BLOG_JSON_PATH, entries)
-        print(f"[ok] Added {len(new_entries)} new posts to {BLOG_JSON_PATH}")
+        merged, stats = merge_entries(
+            existing_entries,
+            new_entries,
+            key_fn=lambda e: e.get("metadata", {}).get("url"),
+        )
+        os.makedirs(os.path.dirname(BLOG_JSON_PATH), exist_ok=True)
+        with open(BLOG_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+        write_ingestion_log(
+            f"[ok] Added {stats['added']} new, updated {stats['updated']} blog posts (unchanged {stats['unchanged']}, retained {stats['retained']})"
+        )
     else:
-        print("[ok] No new posts found – JSON is up to date.")
+        write_ingestion_log("[ok] No new posts found – JSON is up to date.")
 
 
 if __name__ == "__main__":

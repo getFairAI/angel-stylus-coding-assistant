@@ -6,6 +6,9 @@ import re
 from urllib.parse import urlparse
 import requests
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 # List of GitHub repositories to ingest (owner/repo)
 REPOS = [
     "OffchainLabs/cargo-stylus",
@@ -38,11 +41,42 @@ VIDEO_EXTENSIONS = (
 # ---------------------------------------------
 # IO helpers
 # ---------------------------------------------
-def save_entries(path: str, entries: List[Dict[str, Any]]) -> None:
-    """Save entries to disk, overwriting previous content."""
+def entry_key(entry: Dict[str, Any]):
+    meta = entry.get("metadata", {})
+    source = meta.get("source")
+    if source == "github_readme":
+        return (
+            source,
+            meta.get("repo"),
+            meta.get("section"),
+            meta.get("subsection"),
+            meta.get("title"),
+        )
+    if source == "github_readme_linked":
+        return (
+            source,
+            meta.get("repo"),
+            meta.get("linked_url"),
+        )
+    return (
+        source,
+        meta.get("repo"),
+        meta.get("title"),
+        meta.get("section"),
+        meta.get("subsection"),
+    )
+
+
+def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> None:
+    """Merge new entries into existing file and persist."""
+    existing = load_entries(path)
+    merged, stats = merge_entries(existing, new_entries, key_fn=entry_key)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} total README entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {path}"
+    )
 
 # ---------------------------------------------
 # Fetch README (main -> master)
@@ -154,14 +188,14 @@ def fetch_link_content(url: str) -> Optional[str]:
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "").lower()
             if not content_type.startswith("text/") and "json" not in content_type and "markdown" not in content_type:
-                print(f"[info] Skipping non-text resource {candidate} (content-type={content_type})")
+                write_ingestion_log(f"[info] Skipping non-text resource {candidate} (content-type={content_type})")
                 return None
             return resp.text
         except Exception as e:
             last_error = e
             continue
 
-    print(f"[warn] Failed to fetch linked resource {url}: {last_error}")
+    write_ingestion_log(f"[warn] Failed to fetch linked resource {url}: {last_error}")
     return None
 
 
@@ -206,9 +240,9 @@ def build_entries_for_links(repo_slug: str, readme_url: str, markdown: str) -> L
         )
 
     if entries:
-        print(f"[ok] Added {len(entries)} linked resources for {repo_slug}")
+        write_ingestion_log(f"[ok] Added {len(entries)} linked resources for {repo_slug}")
     else:
-        print("[info] No linked resources ingested (after filtering videos/broken links)")
+        write_ingestion_log("[info] No linked resources ingested (after filtering videos/broken links)")
 
     return entries
 
@@ -346,20 +380,20 @@ def ingest_github_readmes():
     all_entries: List[Dict[str, Any]] = []
 
     for repo_slug in REPOS:
-        print(f"[info] Fetching README for {repo_slug}")
+        write_ingestion_log(f"[info] Fetching README for {repo_slug}")
         try:
             markdown = fetch_repo_readme_markdown(repo_slug)
         except Exception as e:
-            print(f"[warn] Failed to fetch README for {repo_slug}: {e}")
+            write_ingestion_log(f"[warn] Failed to fetch README for {repo_slug}: {e}")
             continue
 
-        print(f"[info] Parsing README sections for {repo_slug}")
+        write_ingestion_log(f"[info] Parsing README sections for {repo_slug}")
         sections = parse_readme_sections(markdown)
-        print(f"[info] Parsed {len(sections)} sections for {repo_slug}")
+        write_ingestion_log(f"[info] Parsed {len(sections)} sections for {repo_slug}")
 
         repo_entries = build_entries_for_repo(repo_slug, sections)
         all_entries.extend(repo_entries)
-        print(f"[ok] Added {len(repo_entries)} entries for {repo_slug}")
+        write_ingestion_log(f"[ok] Added {len(repo_entries)} entries for {repo_slug}")
 
         # Special handling: follow linked resources in awesome-stylus
         if repo_slug.lower().endswith("awesome-stylus"):
@@ -368,7 +402,6 @@ def ingest_github_readmes():
             all_entries.extend(link_entries)
 
     save_entries(OUTPUT_JSON_PATH, all_entries)
-    print(f"[ok] Saved {len(all_entries)} total entries to {OUTPUT_JSON_PATH}")
 
 
 if __name__ == "__main__":

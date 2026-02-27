@@ -11,6 +11,9 @@ from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 COURSE_BASE = "https://learnweb3.io/courses/arbitrum-stylus-course/"
 OUTPUT_JSON_PATH = "data/stylus_course.json"
 
@@ -44,7 +47,7 @@ def get_lesson_urls(page) -> List[str]:
     data = page.evaluate("() => window.__NEXT_DATA__")
     slugs = extract_slugs_from_next_data(data) if data else set()
     if not slugs:
-        print("[warn] No lesson slugs found in __NEXT_DATA__")
+        write_ingestion_log("[warn] No lesson slugs found in __NEXT_DATA__")
     urls = [
         urljoin(COURSE_BASE, f"lessons/{slug}/")
         for slug in sorted(slugs)
@@ -101,7 +104,7 @@ def ingest_stylus_course():
         page = browser.new_page()
 
         lesson_urls = get_lesson_urls(page)
-        print(f"[info] Found {len(lesson_urls)} lesson pages")
+        write_ingestion_log(f"[info] Found {len(lesson_urls)} lesson pages")
 
         for url in lesson_urls:
             try:
@@ -109,16 +112,23 @@ def ingest_stylus_course():
                 if entry.get("text"):
                     entries.append(entry)
             except Exception as e:
-                print(f"[warn] Failed to scrape {url}: {e}")
+                write_ingestion_log(f"[warn] Failed to scrape {url}: {e}")
 
         browser.close()
 
+    existing = load_entries(OUTPUT_JSON_PATH)
+    merged, stats = merge_entries(
+        existing, entries, key_fn=lambda e: e.get("metadata", {}).get("url")
+    )
+
     os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
     with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    print(f"[✔] Saved {len(entries)} course entries to {OUTPUT_JSON_PATH}")
-    return len(entries)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} course entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
+    )
+    return len(merged)
 
 
 if __name__ == "__main__":

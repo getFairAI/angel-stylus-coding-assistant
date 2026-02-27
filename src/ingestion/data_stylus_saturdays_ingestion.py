@@ -10,6 +10,11 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import time
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
+OUTPUT_JSON_PATH = "data/stylus_saturdays.json"
+
 ARCHIVE_URL = "https://stylus-saturdays.com/archive"
 
 CATEGORIES = {
@@ -195,7 +200,7 @@ def scrape_all():
         page = browser.new_page()
 
         post_links = get_post_links(page)
-        print(f"Found {len(post_links)} posts")
+        write_ingestion_log(f"[info] Found {len(post_links)} Stylus Saturdays posts")
 
         results = []
         for link in post_links:
@@ -203,12 +208,22 @@ def scrape_all():
                 data = scrape_post(page, link)
                 results.append(data)
             except Exception as e:
-                print("Error scraping", link, e)
+                write_ingestion_log(f"[warn] Error scraping {link}: {e}")
 
         browser.close()
 
-    with open("data/stylus_saturdays.json", "w") as f:
-        json.dump(results, f, indent=2)
+    existing = load_entries(OUTPUT_JSON_PATH)
+    merged, stats = merge_entries(
+        existing,
+        results,
+        key_fn=lambda e: e.get("metadata", {}).get("url"),
+    )
+
+    with open(OUTPUT_JSON_PATH, "w") as f:
+        json.dump(merged, f, indent=2)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} Stylus Saturdays entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
+    )
 
 
 if __name__ == "__main__":

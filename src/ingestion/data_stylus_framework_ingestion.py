@@ -11,6 +11,9 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 load_dotenv()
 
 HEADERS = {"User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"}
@@ -38,7 +41,7 @@ def safe_json(url: str) -> Optional[dict]:
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
-        print(f"[warn] JSON fetch failed {url}: {e}")
+        write_ingestion_log(f"[warn] JSON fetch failed {url}: {e}")
         return None
 
 
@@ -50,7 +53,7 @@ def fetch_text(url: str) -> Optional[str]:
             return None
         return resp.text
     except Exception as e:
-        print(f"[warn] Failed to fetch {url}: {e}")
+        write_ingestion_log(f"[warn] Failed to fetch {url}: {e}")
         return None
 
 
@@ -66,7 +69,7 @@ def choose_ref(repo: str) -> Optional[str]:
     for ref in ["main", "master"]:
         if github_tree(repo, ref):
             return ref
-    print(f"[warn] Could not resolve ref for {repo}")
+    write_ingestion_log(f"[warn] Could not resolve ref for {repo}")
     return None
 
 
@@ -110,17 +113,23 @@ def collect_framework_files() -> List[Dict]:
 
         entries.append(build_entry(FRAMEWORK_REPO, ref, path, content))
 
-    print(f"[ok] Collected {len(entries)} framework files")
+    write_ingestion_log(f"[ok] Collected {len(entries)} framework files")
     return entries
 
 
 def ingest_stylus_framework():
     entries = collect_framework_files()
+    existing = load_entries(OUTPUT_JSON_PATH)
+    merged, stats = merge_entries(
+        existing, entries, key_fn=lambda e: (e.get("metadata", {}).get("repo"), e.get("metadata", {}).get("path"))
+    )
     os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
     with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
-    print(f"[✔] Saved {len(entries)} framework code entries to {OUTPUT_JSON_PATH}")
-    return len(entries)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} framework code entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
+    )
+    return len(merged)
 
 
 if __name__ == "__main__":

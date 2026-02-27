@@ -15,6 +15,9 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 BASE_URL = "https://docs.openzeppelin.com/contracts-stylus"
 OUTPUT_JSON_PATH = "data/openzeppelin_stylus_docs.json"
 
@@ -60,7 +63,7 @@ def discover_links(start_url: str) -> List[str]:
         try:
             soup = fetch_html(url)
         except Exception as e:
-            print(f"[warn] Failed to fetch {url}: {e}")
+            write_ingestion_log(f"[warn] Failed to fetch {url}: {e}")
             continue
 
         for a in soup.find_all("a", href=True):
@@ -71,7 +74,7 @@ def discover_links(start_url: str) -> List[str]:
             if is_valid_link(netloc, full) and full not in seen:
                 queue.append(full)
 
-    print(f"[info] Discovered {len(ordered)} pages (cap {MAX_PAGES})")
+    write_ingestion_log(f"[info] Discovered {len(ordered)} pages (cap {MAX_PAGES})")
     return ordered
 
 
@@ -110,7 +113,7 @@ def ingest_openzeppelin_stylus_docs(output_path: str = OUTPUT_JSON_PATH) -> int:
         try:
             soup = fetch_html(url)
         except Exception as e:
-            print(f"[warn] Skip {url}: {e}")
+            write_ingestion_log(f"[warn] Skip {url}: {e}")
             continue
 
         title_tag = soup.find(["h1", "title"])
@@ -118,17 +121,24 @@ def ingest_openzeppelin_stylus_docs(output_path: str = OUTPUT_JSON_PATH) -> int:
 
         body = extract_main_text(soup)
         if not body:
-            print(f"[warn] Empty body at {url}")
+            write_ingestion_log(f"[warn] Empty body at {url}")
             continue
 
         entries.append(build_entry(url, title, body))
 
+    existing = load_entries(output_path)
+    merged, stats = merge_entries(
+        existing, entries, key_fn=lambda e: e.get("metadata", {}).get("url")
+    )
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    print(f"[✔] Saved {len(entries)} OZ Stylus docs to {output_path}")
-    return len(entries)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} OZ Stylus docs (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {output_path}"
+    )
+    return len(merged)
 
 
 if __name__ == "__main__":

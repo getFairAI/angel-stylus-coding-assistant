@@ -12,6 +12,9 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import load_entries, merge_entries
+
 load_dotenv()
 
 HEADERS = {"User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"}
@@ -47,7 +50,7 @@ def safe_json(url: str) -> Optional[dict]:
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
-        print(f"[warn] JSON fetch failed {url}: {e}")
+        write_ingestion_log(f"[warn] JSON fetch failed {url}: {e}")
         return None
 
 
@@ -62,7 +65,7 @@ def fetch_text(url: str, extra_headers: Optional[Dict] = None) -> Optional[str]:
             return None
         return resp.text
     except Exception as e:
-        print(f"[warn] Failed to fetch {url}: {e}")
+        write_ingestion_log(f"[warn] Failed to fetch {url}: {e}")
         return None
 
 
@@ -78,7 +81,7 @@ def choose_ref(repo: str) -> Optional[str]:
     for ref in ["main", "master"]:
         if github_tree(repo, ref):
             return ref
-    print(f"[warn] Could not resolve ref for {repo}")
+    write_ingestion_log(f"[warn] Could not resolve ref for {repo}")
     return None
 
 
@@ -107,7 +110,7 @@ def search_repo(owner: str, repo_prefix: str) -> Optional[str]:
         if items:
             return items[0]["full_name"]
     except Exception as e:
-        print(f"[info] search repo failed for {owner}/{repo_prefix}: {e}")
+        write_ingestion_log(f"[info] search repo failed for {owner}/{repo_prefix}: {e}")
     return None
 
 
@@ -195,10 +198,10 @@ def collect_repo_files(repo: str) -> List[Dict]:
         owner, name = repo.split("/", 1)
         suggestion = search_repo(owner, name)
         if suggestion and repo_exists(suggestion):
-            print(f"[info] Resolved {repo} -> {suggestion} via search")
+            write_ingestion_log(f"[info] Resolved {repo} -> {suggestion} via search")
             repo = suggestion
         else:
-            print(f"[warn] Repo not found or inaccessible: {repo}")
+            write_ingestion_log(f"[warn] Repo not found or inaccessible: {repo}")
             return []
 
     ref = choose_ref(repo)
@@ -226,7 +229,7 @@ def collect_repo_files(repo: str) -> List[Dict]:
 
         entries.append(build_entry(repo, ref, path, content))
 
-    print(f"[ok] Collected {len(entries)} files from {repo}")
+    write_ingestion_log(f"[ok] Collected {len(entries)} files from {repo}")
     return entries
 
 
@@ -237,20 +240,32 @@ def ingest_awesome_stylus_code():
         extra_headers={"Accept": "application/vnd.github.v3.raw"},
     )
     if not readme:
-        print("[warn] Could not fetch awesome-stylus README; skipping")
+        write_ingestion_log("[warn] Could not fetch awesome-stylus README; skipping")
     else:
         repo_slugs = extract_repo_links_from_markdown(readme)
         if not repo_slugs:
-            print("[warn] No repo links detected in README")
+            write_ingestion_log("[warn] No repo links detected in README")
         for repo in repo_slugs:
             entries.extend(collect_repo_files(repo))
 
+    existing = load_entries(OUTPUT_JSON_PATH)
+    merged, stats = merge_entries(
+        existing,
+        entries,
+        key_fn=lambda e: (
+            e.get("metadata", {}).get("repo"),
+            e.get("metadata", {}).get("path"),
+        ),
+    )
+
     os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
     with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    print(f"[✔] Saved {len(entries)} community code entries to {OUTPUT_JSON_PATH}")
-    return len(entries)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} community code entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
+    )
+    return len(merged)
 
 
 if __name__ == "__main__":
