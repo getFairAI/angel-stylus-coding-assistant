@@ -157,54 +157,40 @@ def get_conversation(session_id: str) -> Dict:
     return thread if found else {}
 
 
-def export_conversations(*, min_rating: int = 1, since_timestamp: Optional[int] = None, max_sessions: int = 1000) -> List[Dict]:
-    """Return conversations that contain at least one turn meeting the rating threshold.
+def export_conversations(*, min_rating: Optional[int] = None, since_timestamp: Optional[int] = None, max_turns: int = 1000) -> List[Dict]:
+    """Return turns that have been rated (optionally filtered by min_rating).
 
-    Used for training/export pipelines. Conversations are returned with only the
-    qualifying turns (rating >= min_rating). The list is truncated to
-    `max_sessions` to keep payloads reasonable for admin APIs.
+    Used for training/export pipelines. Each returned dict represents a single turn
+    (with `session_id` included) so the admin export can focus strictly on
+    user-rated outputs. The list is truncated to `max_turns` to keep payloads
+    reasonable.
     """
 
-    if min_rating not in (-1, 0, 1):
+    if min_rating is not None and min_rating not in (-1, 0, 1):
         raise ValueError("min_rating must be one of {-1, 0, 1}")
 
-    sessions: Dict[str, Dict] = {}
-    qualifying_sessions = []
+    if max_turns <= 0:
+        raise ValueError("max_turns must be > 0")
+
+    rated_turns: List[Dict] = []
 
     for event in _iter_events() or []:
-        etype = event.get("type")
+        if event.get("type") != "turn":
+            continue
+        rating = event.get("rating")
+        if rating is None:
+            continue
+        if min_rating is not None and rating < min_rating:
+            continue
+        ts = event.get("timestamp")
+        if since_timestamp is not None and (ts is None or ts < since_timestamp):
+            continue
         session_id = event.get("session_id")
         if not session_id:
             continue
-
-        if etype == "session_start":
-            sess = sessions.setdefault(session_id, {
-                "session_id": session_id,
-                "turns": [],
-            })
-            sess["started_at"] = event.get("timestamp")
-            if event.get("user_id"):
-                sess["user_id"] = event.get("user_id")
-            if event.get("metadata"):
-                sess["metadata"] = event.get("metadata")
-            continue
-
-        if etype != "turn":
-            continue
-
-        rating = event.get("rating")
-        ts = event.get("timestamp")
-        if rating is None or rating < min_rating:
-            continue
-        if since_timestamp is not None and (ts is None or ts < since_timestamp):
-            continue
-
-        sess = sessions.setdefault(session_id, {
-            "session_id": session_id,
-            "turns": [],
-        })
-        sess["turns"].append(
+        rated_turns.append(
             {
+                "session_id": session_id,
                 "turn_id": event.get("turn_id"),
                 "prompt": event.get("prompt"),
                 "response": event.get("response"),
@@ -215,13 +201,5 @@ def export_conversations(*, min_rating: int = 1, since_timestamp: Optional[int] 
             }
         )
 
-    # Keep only sessions with qualifying turns, ordered by start time then fallback to first turn timestamp.
-    for sess in sessions.values():
-        if not sess.get("turns"):
-            continue
-        sess_turns = sess["turns"]
-        sess_turns.sort(key=lambda t: t.get("timestamp") or 0)
-        qualifying_sessions.append(sess)
-
-    qualifying_sessions.sort(key=lambda s: s.get("started_at") or s["turns"][0].get("timestamp") or 0)
-    return qualifying_sessions[:max_sessions]
+    rated_turns.sort(key=lambda t: t.get("timestamp") or 0)
+    return rated_turns[:max_turns]

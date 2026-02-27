@@ -225,8 +225,19 @@ class ConversationResponse(BaseModel):
     turns: List[ConversationTurn] = Field(default_factory=list)
 
 
+class RatedTurnExport(BaseModel):
+    session_id: str
+    turn_id: str
+    prompt: str
+    response: str
+    rating: int
+    skill: Optional[str] = None
+    timestamp: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
 class ConversationExportResponse(BaseModel):
-    sessions: List[ConversationResponse]
+    turns: List[RatedTurnExport]
 class FeedbackResponse(BaseModel):
     feedback_id: str
     stored: bool
@@ -409,24 +420,24 @@ def conversations_get(session_id: str):
     return convo
 
 
-# Admin export of rated conversations for retraining
+# Admin export of rated answers for retraining
 @app.get("/admin/conversations/export", response_model=ConversationExportResponse)
 def conversations_export(
-    min_rating: int = 1,
+    min_rating: Optional[int] = None,
     since_timestamp: Optional[int] = None,
-    max_sessions: int = 500,
+    max_turns: int = 500,
     _=Depends(require_admin_token),
 ):
     try:
-        sessions = export_conversations(
+        turns = export_conversations(
             min_rating=min_rating,
             since_timestamp=since_timestamp,
-            max_sessions=max_sessions,
+            max_turns=max_turns,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return {"sessions": sessions}
+    return {"turns": turns}
 
 
 @app.post("/skills/sift-stylus-porting-auditor/validate-augmentation")

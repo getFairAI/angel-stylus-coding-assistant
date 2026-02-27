@@ -394,16 +394,24 @@ def test_conversation_flow_and_export(monkeypatch, tmp_path):
     assert body["turns"][0]["rating"] == 1
     assert body["turns"][0]["skill"] == "sift-stylus-research"
 
+    # add an unrated turn so the export can keep filtering to rated answers
+    second_turn = client.post(
+        f"/conversations/{session_id}/turn",
+        json={"prompt": "again", "response": "hello 2"},
+    )
+    assert second_turn.status_code == 200
+
     # export (admin-protected)
     export = client.get(
         "/admin/conversations/export",
         headers={"Authorization": "Bearer secret"},
-        params={"min_rating": 1, "max_sessions": 10},
+        params={"min_rating": 1, "max_turns": 10},
     )
     assert export.status_code == 200
-    sessions = export.json()["sessions"]
-    assert sessions[0]["session_id"] == session_id
-    assert sessions[0]["turns"][0]["turn_id"] == turn_id
+    turns = export.json()["turns"]
+    assert len(turns) == 1
+    assert turns[0]["session_id"] == session_id
+    assert turns[0]["turn_id"] == turn_id
 
 
 def test_conversation_turn_rejects_bad_rating(monkeypatch, tmp_path):
