@@ -41,6 +41,7 @@ from feedback_models import FeedbackPayload
 from skill_registry import (
     SKILL_ID_PORTING_AUDITOR,
     SKILL_ID_RESEARCH,
+    SKILL_ID_CODE_HELPER,
     get_skill,
     list_skills,
     run_skill_search,
@@ -353,6 +354,18 @@ def stylus_porting_audit(request: PortingStylusRequest, raw_request: Request, ra
     )
     return result
 
+@app.post("/stylus-code-help")
+def stylus_code_help(request: StylusRequest, raw_request: Request, raw_response: Response):
+    session_id = _get_or_create_session(raw_request, raw_response)
+    result = execute_skill_search(SKILL_ID_CODE_HELPER, request.prompt, session_id=session_id)
+    _ensure_session_and_log_turn(
+        request=raw_request,
+        response=raw_response,
+        skill_id=SKILL_ID_CODE_HELPER,
+        prompt=request.prompt,
+        result=result,
+    )
+    return result
 
 @app.post("/conversations/start", response_model=ConversationStartResponse)
 def conversations_start(request: ConversationStartRequest):

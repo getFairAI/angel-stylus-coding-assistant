@@ -15,6 +15,7 @@ from retrieve_chroma_docs import retrieve_stylus_context
 
 SKILL_ID_RESEARCH = "sift-stylus-research"
 SKILL_ID_PORTING_AUDITOR = "sift-stylus-porting-auditor"
+SKILL_ID_CODE_HELPER = "sift-stylus-code-helper"
 DEFAULT_GENERIC_SYSTEM_PROMPT = (
     "You are Sifter. Use the selected skill's retrieval tool before final answers when evidence is needed. "
     "Prefer concrete references and state uncertainty clearly when evidence is limited."
@@ -100,6 +101,11 @@ def _run_shared_retrieval(prompt: str, session_id: Optional[str] = None) -> dict
     return retrieve_stylus_context(prompt, include_research_contract=True, session_id=session_id)
 
 
+def _run_code_helper_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
+    # Option A (most common): include research contract context
+    return retrieve_stylus_context(prompt, include_research_contract=True, session_id=session_id)
+
+    
 def _run_porting_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
     return retrieve_stylus_context(prompt, include_research_contract=False, session_id=session_id)
 
@@ -286,6 +292,14 @@ SKILL_REGISTRY: Dict[str, SkillDefinition] = {
         system_prompt=_load_skill_system_prompt(SKILL_ID_PORTING_AUDITOR),
         behavior_hash=_compute_behavior_hash(SKILL_ID_PORTING_AUDITOR),
         search_handler=_run_porting_retrieval,
+    ),
+    SKILL_ID_CODE_HELPER: SkillDefinition(
+        skill_id=SKILL_ID_CODE_HELPER,
+        label="Code Helper",
+        description="Code-oriented help for Stylus projects: debugging, patterns, and implementation guidance with citations.",
+        system_prompt=_load_skill_system_prompt(SKILL_ID_CODE_HELPER),
+        behavior_hash=_compute_behavior_hash(SKILL_ID_CODE_HELPER),
+        search_handler=_run_code_helper_retrieval,  # or _run_shared_retrieval
     ),
 }
 

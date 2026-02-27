@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stylus Code Helper"
+  short_description: "Generate source-backed Stylus code snippets using MCP retrieval"
+  default_prompt: "Use $stylus-code-helper to retrieve relevant Stylus documentation from the hosted MCP backend and return a references-first answer with small, practical code snippets, brief explanations, adaptation notes, and direct source links."
