@@ -1,6 +1,7 @@
 from chroma_query import get_chroma_documents
-from feedback_store import get_feedback_documents
+from feedback_store import get_feedback_documents, get_conversation_documents
 import re
+from typing import Optional
 
 
 TOOL_QUERY_HINTS = {
@@ -279,6 +280,11 @@ def score_hit(hit, prefs):
     repo = (metadata.get("repo") or "").lower()
     parent_id = metadata.get("parent_id")
     distance = hit.get("distance")
+    session_match = (
+        prefs.get("session_id")
+        and metadata.get("session_id")
+        and prefs["session_id"] == metadata.get("session_id")
+    )
 
     score = 0.0
     if distance is not None:
@@ -287,6 +293,10 @@ def score_hit(hit, prefs):
     # Strongly prioritize user-approved answers.
     if source == USER_FEEDBACK_SOURCE:
         score -= 1.8
+    if source == "conversation":
+        score -= 1.4
+        if session_match:
+            score -= 0.6
 
     # Generalized behavior: prioritize community + tooling sources by default.
     if source == "github_readme" or "source: github readme" in text:
@@ -705,6 +715,7 @@ def retrieve_stylus_context(
     user_prompt: str,
     max_chars: int = 10000,
     include_research_contract: bool = True,
+    session_id: Optional[str] = None,
 ):
     """
     Retrieve relevant Stylus documentation context for a given user query.
@@ -724,6 +735,14 @@ def retrieve_stylus_context(
             meta.setdefault("source", USER_FEEDBACK_SOURCE)
         hits = feedback_hits + hits
 
+    # Pull in positive-rated conversation turns (optionally scoped to session).
+    convo_hits = get_conversation_documents(user_prompt, session_id=session_id)
+    if convo_hits:
+        for hit in convo_hits:
+            meta = hit.setdefault("metadata", {})
+            meta.setdefault("source", "conversation")
+        hits = convo_hits + hits
+
     if not hits:
         return {
             "found": False,
@@ -738,6 +757,7 @@ def retrieve_stylus_context(
 
     code_request = is_code_request(user_prompt)
     prefs = get_query_preferences(user_prompt, code_request=code_request)
+    prefs["session_id"] = session_id
     ranked_hits = sorted(
         hits,
         key=lambda hit: score_hit(hit, prefs=prefs),

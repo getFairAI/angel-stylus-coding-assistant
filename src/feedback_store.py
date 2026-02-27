@@ -61,6 +61,34 @@ def _get_feedback_collection():
         return None
 
 
+def _index_document_if_positive(
+    *,
+    prompt: str,
+    response: str,
+    rating: int,
+    metadata: Optional[Dict] = None,
+    doc_id: Optional[str] = None,
+):
+    """Shared helper to index positive-rated text into the feedback collection."""
+    if rating <= 0:
+        return None
+    collection = _get_feedback_collection()
+    if collection is None:
+        return None
+
+    doc = f"Prompt: {prompt}\n\nAssistant response:\n{response}"
+    try:
+        collection.add(
+            documents=[doc],
+            metadatas=[metadata or {}],
+            ids=[doc_id or str(uuid.uuid4())],
+        )
+    except Exception:
+        # best-effort
+        return None
+    return True
+
+
 def _normalize_rating(value: int) -> int:
     if value not in (-1, 0, 1):
         raise ValueError("rating must be one of {-1, 0, 1}")
@@ -98,26 +126,48 @@ def record_feedback(
     _write_feedback_event(event)
 
     # Only index positive feedback into Chroma to avoid polluting retrieval.
-    if rating > 0:
-        collection = _get_feedback_collection()
-        if collection is not None:
-            try:
-                doc = f"Prompt: {prompt}\n\nAssistant response:\n{response}"
-                collection.add(
-                    documents=[doc],
-                    metadatas=[{
-                        "source": "user_feedback",
-                        "rating": rating,
-                        "skill": skill or "",
-                        **(metadata or {}),
-                    }],
-                    ids=[feedback_id],
-                )
-            except Exception:
-                # Ignore indexing errors; logging already captured the event.
-                pass
+    _index_document_if_positive(
+        prompt=prompt,
+        response=response,
+        rating=rating,
+        metadata={
+            "source": "user_feedback",
+            "rating": rating,
+            "skill": skill or "",
+            **(metadata or {}),
+        },
+        doc_id=feedback_id,
+    )
 
     return feedback_id
+
+
+def index_conversation_turn(
+    *,
+    session_id: str,
+    turn_id: str,
+    prompt: str,
+    response: str,
+    rating: int,
+    skill: Optional[str] = None,
+    metadata: Optional[Dict] = None,
+):
+    """Index a positively-rated conversation turn into the feedback collection."""
+
+    _index_document_if_positive(
+        prompt=prompt,
+        response=response,
+        rating=rating,
+        metadata={
+            "source": "conversation",
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "rating": rating,
+            "skill": skill or "",
+            **(metadata or {}),
+        },
+        doc_id=turn_id,
+    )
 
 
 def get_feedback_documents(prompt: str, n_results: int = 5) -> List[Dict]:
@@ -149,6 +199,43 @@ def get_feedback_documents(prompt: str, n_results: int = 5) -> List[Dict]:
         # Skip anything that is not explicitly positive feedback.
         if meta.get("rating", 0) <= 0:
             continue
+        hits.append(
+            {
+                "text": doc,
+                "metadata": meta,
+                "distance": distances[idx] if idx < len(distances) else None,
+            }
+        )
+    return hits
+
+
+def get_conversation_documents(prompt: str, n_results: int = 3, session_id: Optional[str] = None) -> List[Dict]:
+    """Return positive-rated conversation turns as retriever hits."""
+    collection = _get_feedback_collection()
+    if collection is None:
+        return []
+
+    filters = {"source": "conversation"}
+    if session_id:
+        filters["session_id"] = session_id
+
+    try:
+        results = collection.query(
+            query_texts=[prompt],
+            n_results=n_results,
+            where=filters,
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception:
+        return []
+
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    hits = []
+    for idx, doc in enumerate(documents):
+        meta = (metadatas[idx] if idx < len(metadatas) else {}) or {}
         hits.append(
             {
                 "text": doc,

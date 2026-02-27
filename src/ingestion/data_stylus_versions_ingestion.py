@@ -124,7 +124,6 @@ query($owner: String!, $name: String!, $cursor: String) {
         url
         baseRefName
         headRefName
-        labels(first: 10) { nodes { name } }
       }
     }
   }
@@ -171,7 +170,6 @@ def build_entries_for_prs(prs: List[Dict]) -> List[Dict]:
     entries: List[Dict] = []
 
     for pr in prs:
-        labels = [l["name"] for l in pr.get("labels", {}).get("nodes", [])]
         header_lines = [
             "Source: Stylus SDK PR",
             f"Repo: {REPO}",
@@ -179,7 +177,6 @@ def build_entries_for_prs(prs: List[Dict]) -> List[Dict]:
             f"URL: {pr['url']}",
             f"Merged At: {pr.get('mergedAt')}",
             f"Base: {pr.get('baseRefName')} | Head: {pr.get('headRefName')}",
-            f"Labels: {', '.join(labels) if labels else 'none'}",
         ]
         body = pr.get("body") or ""
         text = "\n\n".join(["\n".join(header_lines), body.strip()])
@@ -196,7 +193,6 @@ def build_entries_for_prs(prs: List[Dict]) -> List[Dict]:
                     "merged_at": pr.get("mergedAt"),
                     "base_ref": pr.get("baseRefName"),
                     "head_ref": pr.get("headRefName"),
-                    "labels": labels,
                     "ingested_at": now_iso,
                 },
             }

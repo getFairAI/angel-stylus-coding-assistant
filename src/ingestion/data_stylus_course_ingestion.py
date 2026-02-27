@@ -55,7 +55,7 @@ def get_lesson_urls(page) -> List[str]:
     if not slugs:
         write_ingestion_log("[warn] No lesson slugs found in __NEXT_DATA__")
     urls = [
-        urljoin(COURSE_BASE, f"lessons/{slug}/")
+        urljoin(COURSE_BASE, f"{slug}/")
         for slug in sorted(slugs)
         if "module-" in slug.lower()
     ]

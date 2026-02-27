@@ -22,10 +22,11 @@ def _read_default_prompt(skill_id):
 def test_research_skill_enables_research_contract(monkeypatch):
     captured = {}
 
-    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000):
+    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000, session_id=None):
         captured["prompt"] = prompt
         captured["include_research_contract"] = include_research_contract
         captured["max_chars"] = max_chars
+        captured["session_id"] = session_id
         return {"found": True}
 
     monkeypatch.setattr(skill_registry, "retrieve_stylus_context", fake_retrieve)
@@ -46,10 +47,11 @@ def test_research_skill_enables_research_contract(monkeypatch):
 def test_porting_skill_disables_research_contract(monkeypatch):
     captured = {}
 
-    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000):
+    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000, session_id=None):
         captured["prompt"] = prompt
         captured["include_research_contract"] = include_research_contract
         captured["max_chars"] = max_chars
+        captured["session_id"] = session_id
         return {"found": True}
 
     monkeypatch.setattr(skill_registry, "retrieve_stylus_context", fake_retrieve)
@@ -82,7 +84,7 @@ def test_published_prompt_is_source_of_truth():
 
 
 def test_porting_skill_enriches_payload_with_codebase_analysis(monkeypatch):
-    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000):
+    def fake_retrieve(prompt, include_research_contract=True, max_chars=10000, session_id=None):
         return {
             "found": True,
             "context": "Top references:\n1. [Existing](https://example.com/existing)",
@@ -167,7 +169,7 @@ def test_research_skill_does_not_run_codebase_analysis(monkeypatch):
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+        lambda _prompt, include_research_contract=True, max_chars=10000, session_id=None: {"found": True},
     )
 
     payload = skill_registry.run_skill_search(
@@ -191,7 +193,7 @@ def test_porting_skill_adds_augmentation_contract_without_analysis(monkeypatch):
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+        lambda _prompt, include_research_contract=True, max_chars=10000, session_id=None: {"found": True},
     )
     monkeypatch.setattr(skill_registry, "analyze_contract_target", lambda _prompt: None)
 
@@ -219,7 +221,7 @@ def test_porting_skill_applies_augmentation_and_returns_augmented_analysis(monke
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+        lambda _prompt, include_research_contract=True, max_chars=10000, session_id=None: {"found": True},
     )
     monkeypatch.setattr(
         skill_registry,
@@ -270,7 +272,7 @@ def test_porting_skill_augmentation_fallback_keeps_static_analysis(monkeypatch):
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=True, max_chars=10000: {"found": True},
+        lambda _prompt, include_research_contract=True, max_chars=10000, session_id=None: {"found": True},
     )
     monkeypatch.setattr(
         skill_registry,

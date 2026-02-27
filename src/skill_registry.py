@@ -96,12 +96,12 @@ def _load_skill_system_prompt(skill_id: str) -> str:
     return DEFAULT_GENERIC_SYSTEM_PROMPT
 
 
-def _run_shared_retrieval(prompt: str) -> dict:
-    return retrieve_stylus_context(prompt, include_research_contract=True)
+def _run_shared_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
+    return retrieve_stylus_context(prompt, include_research_contract=True, session_id=session_id)
 
 
-def _run_porting_retrieval(prompt: str) -> dict:
-    return retrieve_stylus_context(prompt, include_research_contract=False)
+def _run_porting_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
+    return retrieve_stylus_context(prompt, include_research_contract=False, session_id=session_id)
 
 
 def _driver_list(values, max_items: int = 3) -> str:
@@ -310,12 +310,12 @@ def list_skills() -> List[dict]:
     ]
 
 
-def run_skill_search(skill_id: str, prompt: str, augmentation: object = None) -> dict:
+def run_skill_search(skill_id: str, prompt: str, augmentation: object = None, session_id: Optional[str] = None) -> dict:
     skill = get_skill(skill_id)
     if skill is None:
         raise KeyError(skill_id)
 
-    payload = skill.search_handler(prompt)
+    payload = skill.search_handler(prompt, session_id=session_id)
     if isinstance(payload, dict):
         payload.setdefault("skill", skill_id)
         payload.setdefault("skill_system_prompt", skill.system_prompt)

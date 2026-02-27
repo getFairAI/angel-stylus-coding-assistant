@@ -7,7 +7,7 @@ def test_research_alias_and_skill_route_are_payload_equivalent(monkeypatch):
     monkeypatch.setattr(
         app_module,
         "run_skill_search",
-        lambda skill_id, prompt, augmentation=None: {
+        lambda skill_id, prompt, augmentation=None, session_id=None: {
             "skill": skill_id,
             "prompt": prompt,
             "augmentation": augmentation,
@@ -34,7 +34,7 @@ def test_porting_alias_and_skill_route_are_payload_equivalent_with_augmentation(
     monkeypatch.setattr(
         app_module,
         "run_skill_search",
-        lambda skill_id, prompt, augmentation=None: {
+        lambda skill_id, prompt, augmentation=None, session_id=None: {
             "skill": skill_id,
             "prompt": prompt,
             "augmentation": augmentation,

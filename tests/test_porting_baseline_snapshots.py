@@ -91,7 +91,7 @@ def test_porting_baseline_prompt_suite_matches_snapshots(tmp_path, monkeypatch):
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=False, max_chars=10000: {
+        lambda _prompt, include_research_contract=False, max_chars=10000, session_id=None: {
             "found": True,
             "context": "baseline retrieval context",
             "references": [],
