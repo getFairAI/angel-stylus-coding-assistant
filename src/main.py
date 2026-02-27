@@ -226,14 +226,12 @@ class ConversationResponse(BaseModel):
 
 
 class RatedTurnExport(BaseModel):
-    session_id: str
     turn_id: str
     prompt: str
     response: str
     rating: int
     skill: Optional[str] = None
     timestamp: Optional[int] = None
-    metadata: Optional[Dict[str, Any]] = None
 
 
 class ConversationExportResponse(BaseModel):
@@ -321,11 +319,11 @@ def _get_or_create_session(request: Request, response: Response) -> str:
 def skill_search(skill_id: str, request: SkillSearchRequest, raw_request: Request, raw_response: Response):
     if not get_skill(skill_id):
         raise HTTPException(status_code=404, detail=f"Unsupported skill '{skill_id}'.")
-    if skill_id == SKILL_ID_PORTING_AUDITOR and request.augmentation is None:
+    """ if skill_id == SKILL_ID_PORTING_AUDITOR and request.augmentation is None:
         raise HTTPException(
             status_code=422,
             detail="Porting skill requires an 'augmentation' payload object.",
-        )
+        ) """
     session_id = _get_or_create_session(raw_request, raw_response)
     result = execute_skill_search(skill_id, request.prompt, request.augmentation, session_id=session_id)
     _ensure_session_and_log_turn(
@@ -537,7 +535,7 @@ def submit_feedback(payload: FeedbackPayload):
         metadata=payload.metadata,
     )
     # We always log; storage to Chroma is best-effort, so we return stored=True when rating>0.
-    stored = payload.rating > 0
+    stored = payload.rating > 0 
     return FeedbackResponse(feedback_id=feedback_id, stored=stored)
 
 
