@@ -32,7 +32,8 @@ def main():
     from data_github_ingestion import ingest_github_readmes
     from data_documentation_ingestion import ingest_stylus_docs
     from data_github_issues_ingestion import ingest_github_issues
-    from data_stylus_code_ingestion import ingest_stylus_code
+    from data_stylus_framework_ingestion import ingest_stylus_framework
+    from data_awesome_stylus_code_ingestion import ingest_awesome_stylus_code
     from data_stylus_versions_ingestion import ingest_stylus_versions
     from data_stylus_course_ingestion import ingest_stylus_course
     from data_openzeppelin_stylus_ingestion import ingest_openzeppelin_stylus_docs
@@ -45,7 +46,8 @@ def main():
     run_step("LearnWeb3 Stylus Course", ingest_stylus_course)
     run_step("OZ Stylus Docs", ingest_openzeppelin_stylus_docs)
     run_step("Stylus Versions (changelog + PRs)", ingest_stylus_versions)
-    run_step("Stylus Code (framework + community)", ingest_stylus_code)
+    run_step("Stylus Framework Code", ingest_stylus_framework)
+    run_step("Awesome Stylus Community Code", ingest_awesome_stylus_code)
     run_step("Chroma Index Rebuild", fill_chroma)
 
     write_ingestion_log("====================================")
