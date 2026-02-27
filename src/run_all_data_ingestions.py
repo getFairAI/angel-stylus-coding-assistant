@@ -28,15 +28,15 @@ def main():
     write_ingestion_log("====================================")
 
     # Import inside main to avoid import-time crashes
-    from data_blog_ingestion import ingest_stylus_blog
-    from data_github_ingestion import ingest_github_readmes
-    from data_documentation_ingestion import ingest_stylus_docs
-    from data_github_issues_ingestion import ingest_github_issues
-    from data_stylus_framework_ingestion import ingest_stylus_framework
-    from data_awesome_stylus_code_ingestion import ingest_awesome_stylus_code
-    from data_stylus_versions_ingestion import ingest_stylus_versions
-    from data_stylus_course_ingestion import ingest_stylus_course
-    from data_openzeppelin_stylus_ingestion import ingest_openzeppelin_stylus_docs
+    from ingestion.data_blog_ingestion import ingest_stylus_blog
+    from ingestion.data_github_ingestion import ingest_github_readmes
+    from ingestion.data_documentation_ingestion import ingest_stylus_docs
+    from ingestion.data_github_issues_ingestion import ingest_github_issues
+    from ingestion.data_stylus_framework_ingestion import ingest_stylus_framework
+    from ingestion.data_awesome_stylus_code_ingestion import ingest_awesome_stylus_code
+    from ingestion.data_stylus_versions_ingestion import ingest_stylus_versions
+    from ingestion.data_stylus_course_ingestion import ingest_stylus_course
+    from ingestion.data_openzeppelin_stylus_ingestion import ingest_openzeppelin_stylus_docs
     from fill_chroma import fill_chroma
 
     run_step("Stylus Blog", ingest_stylus_blog)
