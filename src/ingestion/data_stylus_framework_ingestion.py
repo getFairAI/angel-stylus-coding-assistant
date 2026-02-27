@@ -12,7 +12,12 @@ import requests
 from dotenv import load_dotenv
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 load_dotenv()
 
@@ -23,6 +28,7 @@ if token:
 
 FRAMEWORK_REPO = "OffchainLabs/stylus-sdk-rs"
 OUTPUT_JSON_PATH = "data/stylus_framework_code.json"
+JOB_NAME = "stylus_framework"
 
 ALLOWED_EXTENSIONS = (
     ".rs",
@@ -117,7 +123,12 @@ def collect_framework_files() -> List[Dict]:
     return entries
 
 
-def ingest_stylus_framework():
+def ingest_stylus_framework(force_refresh: bool = False):
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return 0
+
     entries = collect_framework_files()
     existing = load_entries(OUTPUT_JSON_PATH)
     merged, stats = merge_entries(
@@ -129,6 +140,7 @@ def ingest_stylus_framework():
     write_ingestion_log(
         f"[ok] Saved {len(merged)} framework code entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
     return len(merged)
 
 

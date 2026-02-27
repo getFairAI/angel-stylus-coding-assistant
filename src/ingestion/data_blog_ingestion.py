@@ -7,10 +7,16 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 # Where we store all Stylus blog entries
 BLOG_JSON_PATH = "data/stylus_blog.json"
+JOB_NAME = "stylus_blog"
 
 # Tag pages we scrape for Stylus content
 TAG_URLS = [
@@ -196,8 +202,13 @@ def build_entry(post_url: str, content: Dict[str, Any]) -> Dict[str, Any]:
 # ----------------------------------------------------
 # Main ingestion process
 # ----------------------------------------------------
-def ingest_stylus_blog():
+def ingest_stylus_blog(force_refresh: bool = False):
     """Main ingestion runner."""
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return
+
     # Load previous entries
     existing_entries = load_entries(BLOG_JSON_PATH)
     entries = list(existing_entries)
@@ -228,13 +239,13 @@ def ingest_stylus_blog():
         except Exception as e:
             write_ingestion_log(f"[warn] Failed to extract {url}: {e}")
 
-    # Save only if new content was found
-    if new_entries:
-        merged, stats = merge_entries(
-            existing_entries,
-            new_entries,
-            key_fn=lambda e: e.get("metadata", {}).get("url"),
-        )
+    merged, stats = merge_entries(
+        existing_entries,
+        new_entries,
+        key_fn=lambda e: e.get("metadata", {}).get("url"),
+    )
+
+    if stats["added"] or stats["updated"]:
         os.makedirs(os.path.dirname(BLOG_JSON_PATH), exist_ok=True)
         with open(BLOG_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
@@ -243,6 +254,8 @@ def ingest_stylus_blog():
         )
     else:
         write_ingestion_log("[ok] No new posts found – JSON is up to date.")
+
+    record_ingestion_stats(JOB_NAME, stats)
 
 
 if __name__ == "__main__":

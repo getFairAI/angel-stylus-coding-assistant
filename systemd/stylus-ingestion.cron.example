@@ -1,0 +1,11 @@
+# /etc/cron.d/stylus-ingestion
+# Runs the full Stylus ingestion pipeline once a week (Monday 03:00 server time).
+# Replace YOUR_USER and /path/to/wow-stylus with your deployment paths.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 3 * * 1 YOUR_USER cd /path/to/wow-stylus \
+  && source /path/to/wow-stylus/.venv/bin/activate \
+  && /path/to/wow-stylus/.venv/bin/python /path/to/wow-stylus/src/run_all_data_ingestions.py \
+  >> /path/to/wow-stylus/logs/ingestion_cron.log 2>&1

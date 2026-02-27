@@ -16,10 +16,16 @@ import requests
 from bs4 import BeautifulSoup
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 BASE_URL = "https://docs.openzeppelin.com/contracts-stylus"
 OUTPUT_JSON_PATH = "data/openzeppelin_stylus_docs.json"
+JOB_NAME = "openzeppelin_stylus_docs"
 
 HEADERS = {
     "User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"
@@ -105,7 +111,12 @@ def build_entry(url: str, title: str, body: str) -> Dict:
     }
 
 
-def ingest_openzeppelin_stylus_docs(output_path: str = OUTPUT_JSON_PATH) -> int:
+def ingest_openzeppelin_stylus_docs(force_refresh: bool = False, output_path: str = OUTPUT_JSON_PATH) -> int:
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return 0
+
     entries: List[Dict] = []
     page_urls = discover_links(BASE_URL)
 
@@ -138,6 +149,7 @@ def ingest_openzeppelin_stylus_docs(output_path: str = OUTPUT_JSON_PATH) -> int:
     write_ingestion_log(
         f"[ok] Saved {len(merged)} OZ Stylus docs (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {output_path}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
     return len(merged)
 
 

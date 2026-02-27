@@ -12,10 +12,16 @@ from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 COURSE_BASE = "https://learnweb3.io/courses/arbitrum-stylus-course/"
 OUTPUT_JSON_PATH = "data/stylus_course.json"
+JOB_NAME = "stylus_course"
 
 
 # ------------------------------------------------------------
@@ -96,7 +102,12 @@ def scrape_lesson(page, url: str) -> Dict[str, Any]:
 # ------------------------------------------------------------
 # Main
 # ------------------------------------------------------------
-def ingest_stylus_course():
+def ingest_stylus_course(force_refresh: bool = False):
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return 0
+
     entries: List[Dict[str, Any]] = []
 
     with sync_playwright() as p:
@@ -128,6 +139,7 @@ def ingest_stylus_course():
     write_ingestion_log(
         f"[ok] Saved {len(merged)} course entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
     return len(merged)
 
 

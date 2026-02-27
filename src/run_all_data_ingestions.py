@@ -1,3 +1,4 @@
+import argparse
 import traceback
 from datetime import datetime
 
@@ -23,6 +24,14 @@ def run_step(name, fn):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run Stylus data ingestions")
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Ignore previous ingestion_stats.json and refetch all sources",
+    )
+    args = parser.parse_args()
+
     write_ingestion_log("====================================")
     write_ingestion_log("Stylus ingestion pipeline started")
     write_ingestion_log("====================================")
@@ -39,15 +48,15 @@ def main():
     from ingestion.data_openzeppelin_stylus_ingestion import ingest_openzeppelin_stylus_docs
     from fill_chroma import fill_chroma
 
-    run_step("Stylus Blog", ingest_stylus_blog)
-    run_step("GitHub READMEs", ingest_github_readmes)
-    run_step("Github Issues & Comments", ingest_github_issues)
-    run_step("Stylus Documentation", ingest_stylus_docs)
-    run_step("LearnWeb3 Stylus Course", ingest_stylus_course)
-    run_step("OZ Stylus Docs", ingest_openzeppelin_stylus_docs)
-    run_step("Stylus Versions (changelog + PRs)", ingest_stylus_versions)
-    run_step("Stylus Framework Code", ingest_stylus_framework)
-    run_step("Awesome Stylus Community Code", ingest_awesome_stylus_code)
+    run_step("Stylus Blog", lambda: ingest_stylus_blog(force_refresh=args.force_refresh))
+    run_step("GitHub READMEs", lambda: ingest_github_readmes(force_refresh=args.force_refresh))
+    run_step("Github Issues & Comments", lambda: ingest_github_issues(force_refresh=args.force_refresh))
+    run_step("Stylus Documentation", lambda: ingest_stylus_docs(force_refresh=args.force_refresh))
+    run_step("LearnWeb3 Stylus Course", lambda: ingest_stylus_course(force_refresh=args.force_refresh))
+    run_step("OZ Stylus Docs", lambda: ingest_openzeppelin_stylus_docs(force_refresh=args.force_refresh))
+    run_step("Stylus Versions (changelog + PRs)", lambda: ingest_stylus_versions(force_refresh=args.force_refresh))
+    run_step("Stylus Framework Code", lambda: ingest_stylus_framework(force_refresh=args.force_refresh))
+    run_step("Awesome Stylus Community Code", lambda: ingest_awesome_stylus_code(force_refresh=args.force_refresh))
     run_step("Chroma Index Rebuild", fill_chroma)
 
     write_ingestion_log("====================================")

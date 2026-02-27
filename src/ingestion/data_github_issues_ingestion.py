@@ -7,6 +7,12 @@ from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
 from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 # load variables from .env
 load_dotenv()
@@ -21,6 +27,8 @@ REPOS = [
     "OffchainLabs/awesome-stylus",
     "OffchainLabs/stylus-sdk-rs",
 ]
+
+JOB_NAME = "github_issues"
 
 # Output JSON file path
 OUTPUT_JSON_PATH = "data/github_issues_sectioned.json"
@@ -74,60 +82,26 @@ query($owner: String!, $repo: String!, $cursor: String, $lastSync: DateTime) {
 # ---------------------------------------------
 # IO helpers
 # ---------------------------------------------
-def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> None:
+def _entry_key(entry: Dict[str, Any]) -> Optional[str]:
+    meta = entry.get("metadata", {})
+    return meta.get("comment_url") or meta.get("issue_url")
+
+
+def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> Dict[str, int]:
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
-    existing_entries: List[Dict[str, Any]] = []
+    existing_entries = load_entries(path)
 
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            try:
-                existing_entries = json.load(f)
-            except Exception:
-                existing_entries = []
-
-    # ---------------------------------------------
-    # Build lookup of existing unique IDs
-    # ---------------------------------------------
-    existing_ids = set()
-
-    for entry in existing_entries:
-        meta = entry.get("metadata", {})
-        unique_id = (
-            meta.get("comment_url")
-            or meta.get("issue_url")
-        )
-        if unique_id:
-            existing_ids.add(unique_id)
-
-    # ---------------------------------------------
-    # Filter new entries
-    # ---------------------------------------------
-    filtered_new_entries = []
-
-    for entry in new_entries:
-        meta = entry.get("metadata", {})
-        unique_id = (
-            meta.get("comment_url")
-            or meta.get("issue_url")
-        )
-
-        if not unique_id:
-            continue
-
-        if unique_id not in existing_ids:
-            filtered_new_entries.append(entry)
-            existing_ids.add(unique_id)
-
-    # ---------------------------------------------
-    # Merge & write
-    # ---------------------------------------------
-    existing_entries.extend(filtered_new_entries)
+    # Use merge_entries for stats + dedupe
+    merged, stats = merge_entries(existing_entries, new_entries, key_fn=_entry_key, sort=False)
 
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(existing_entries, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    write_ingestion_log(f"[dedupe] Added {len(filtered_new_entries)} new entries (skipped {len(new_entries) - len(filtered_new_entries)})")
+    write_ingestion_log(
+        f"[dedupe] Added {stats['added']} new, updated {stats['updated']} (unchanged {stats['unchanged']}, retained {stats['retained']})"
+    )
+    return stats
 
 def read_sync_timestamp() -> Optional[str]:
     if not os.path.exists(OUTPUT_LAST_SYNCED_PATH):
@@ -305,15 +279,20 @@ def build_entries_for_issue(
 # ---------------------------------------------
 # Main ingestion
 # ---------------------------------------------
-def ingest_github_issues():
+def ingest_github_issues(force_refresh: bool = False):
     all_entries: List[Dict[str, Any]] = []
+
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return
 
     try:
         token = get_github_token()
     except RuntimeError as e:
-        # Don't crash the whole pipeline—surface a clear message and exit quietly
-        write_ingestion_log(f"[warn] Skipping GitHub issues ingestion: {e}")
-        return
+        write_ingestion_log(f"[error] Skipping GitHub issues ingestion: {e}")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        raise
 
     headers = build_headers(token)
 
@@ -336,6 +315,7 @@ def ingest_github_issues():
             datetime_last_sync = None
 
     new_sync_timestamp = int(datetime.now(tz=timezone.utc).timestamp())
+    fetch_success = False
     
     for repo_slug in REPOS:
         write_ingestion_log(f"[info] Fetching issues via GraphQL for {repo_slug}")
@@ -346,6 +326,7 @@ def ingest_github_issues():
             write_ingestion_log(str(e))
             write_ingestion_log(f"[warn] Failed to fetch issues for {repo_slug}: {e}")
             continue
+        fetch_success = True
 
         write_ingestion_log(f"[info] Found {len(issues)} issues")
 
@@ -355,10 +336,13 @@ def ingest_github_issues():
 
         write_ingestion_log(f"[ok] Added entries for {repo_slug}")
 
-    save_entries(OUTPUT_JSON_PATH, all_entries)
+    # Deduplicate + persist and capture stats
+    stats = save_entries(OUTPUT_JSON_PATH, all_entries)
 
-    write_sync_timestamp(new_sync_timestamp)
-    
+    if fetch_success:
+        write_sync_timestamp(new_sync_timestamp)
+
+    record_ingestion_stats(JOB_NAME, stats, skipped=not fetch_success)
     write_ingestion_log(f"[ok] Saved {len(all_entries)} total entries")
 
 

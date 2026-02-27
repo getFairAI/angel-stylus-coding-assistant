@@ -13,7 +13,16 @@ missing a merge key are skipped to avoid accidental duplication.
 
 import json
 import os
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+
+# Path where per-ingestion run stats are stored. Overridable for tests.
+INGESTION_STATS_PATH = os.getenv("INGESTION_STATS_PATH", "logs/ingestion_stats.json")
+# How long a zero-change run suppresses another fetch (seconds). Keeps us from
+# hammering sources while still allowing future runs to proceed.
+# default is 1 week - 7 days
+DEFAULT_SKIP_WINDOW_SECONDS = 7 * 24 * 60 * 60
 
 
 def load_entries(path: str) -> List[Dict[str, Any]]:
@@ -107,3 +116,67 @@ def merge_entries(
     }
 
     return merged, stats
+
+
+# -----------------------------------------------------------------------------
+# Run stats helpers
+# -----------------------------------------------------------------------------
+def _ensure_stats_dir():
+    os.makedirs(os.path.dirname(INGESTION_STATS_PATH), exist_ok=True)
+
+
+def load_ingestion_stats() -> Dict[str, Any]:
+    """Load the JSON map of ingestion stats; return empty dict if missing/invalid."""
+    if not os.path.exists(INGESTION_STATS_PATH):
+        return {}
+    try:
+        with open(INGESTION_STATS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return {}
+    return {}
+
+
+def record_ingestion_stats(job_name: str, stats: Dict[str, int], *, skipped: bool = False) -> None:
+    """Persist stats for a job along with a timestamp."""
+    _ensure_stats_dir()
+    payload = load_ingestion_stats()
+    payload[job_name] = {
+        "timestamp": int(time.time()),
+        "skipped": skipped,
+        **stats,
+    }
+    with open(INGESTION_STATS_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def should_skip_ingestion(
+    job_name: str,
+    *,
+    force_refresh: bool = False,
+    skip_window_seconds: int = DEFAULT_SKIP_WINDOW_SECONDS,
+) -> bool:
+    """
+    Decide whether to skip a job based on the last recorded stats.
+
+    Policy: skip when the previous run recorded zero additions and zero updates
+    and that run happened within `skip_window_seconds`, unless force_refresh is True.
+    """
+    if force_refresh:
+        return False
+
+    stats = load_ingestion_stats().get(job_name)
+    if not stats:
+        return False
+
+    if stats.get("added", 0) > 0 or stats.get("updated", 0) > 0:
+        return False
+
+    ts = stats.get("timestamp")
+    if ts is None or skip_window_seconds <= 0:
+        return True
+
+    age = time.time() - ts
+    return age < skip_window_seconds

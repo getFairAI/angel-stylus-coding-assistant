@@ -4,7 +4,12 @@ import json
 import os
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 
 # -----------------------------
@@ -235,7 +240,15 @@ def clean_page_content(url):
 # -----------------------------
 # MAIN INGESTION FUNCTION
 # -----------------------------
-def ingest_stylus_docs(output_path="data/stylus_docs.json"):
+JOB_NAME = "stylus_docs"
+
+
+def ingest_stylus_docs(force_refresh: bool = False, output_path="data/stylus_docs.json"):
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return
+
     documents = []
     existing = load_entries(output_path)
 
@@ -282,6 +295,7 @@ def ingest_stylus_docs(output_path="data/stylus_docs.json"):
     write_ingestion_log(
         f"[ok] Saved {len(merged)} docs (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {output_path}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
     return len(merged)
 
 

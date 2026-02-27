@@ -7,7 +7,12 @@ from urllib.parse import urlparse
 import requests
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 # List of GitHub repositories to ingest (owner/repo)
 REPOS = [
@@ -15,6 +20,8 @@ REPOS = [
     "OffchainLabs/awesome-stylus",
     "OffchainLabs/stylus-sdk-rs",
 ]
+
+JOB_NAME = "github_readmes"
 
 # Output JSON file path
 OUTPUT_JSON_PATH = "data/github_readmes_sectioned.json"
@@ -67,7 +74,7 @@ def entry_key(entry: Dict[str, Any]):
     )
 
 
-def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> None:
+def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> Dict[str, int]:
     """Merge new entries into existing file and persist."""
     existing = load_entries(path)
     merged, stats = merge_entries(existing, new_entries, key_fn=entry_key)
@@ -77,6 +84,8 @@ def save_entries(path: str, new_entries: List[Dict[str, Any]]) -> None:
     write_ingestion_log(
         f"[ok] Saved {len(merged)} total README entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {path}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
+    return stats
 
 # ---------------------------------------------
 # Fetch README (main -> master)
@@ -375,8 +384,13 @@ def build_entries_for_repo(repo_slug: str, sections: List[Dict[str, Any]]) -> Li
 # ---------------------------------------------
 # Main ingestion
 # ---------------------------------------------
-def ingest_github_readmes():
+def ingest_github_readmes(force_refresh: bool = False):
     """Fetch and section-split READMEs from multiple repos."""
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return
+
     all_entries: List[Dict[str, Any]] = []
 
     for repo_slug in REPOS:

@@ -2,7 +2,6 @@ from playwright.sync_api import sync_playwright
 import json
 from datetime import datetime
 import re
-import json
 from typing import List
 from chromadb import Documents, EmbeddingFunction, Embeddings
 import ollama
@@ -11,9 +10,15 @@ import numpy as np
 import time
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 OUTPUT_JSON_PATH = "data/stylus_saturdays.json"
+JOB_NAME = "stylus_saturdays"
 
 ARCHIVE_URL = "https://stylus-saturdays.com/archive"
 
@@ -194,7 +199,12 @@ def scrape_post(page, url):
         }
     }
 
-def scrape_all():
+def scrape_all(force_refresh: bool = False):
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return 0
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -224,6 +234,8 @@ def scrape_all():
     write_ingestion_log(
         f"[ok] Saved {len(merged)} Stylus Saturdays entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
+    return len(merged)
 
 
 if __name__ == "__main__":

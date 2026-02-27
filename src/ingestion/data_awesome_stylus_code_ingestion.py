@@ -13,7 +13,12 @@ import requests
 from dotenv import load_dotenv
 
 from basic_logs import write_ingestion_log
-from ingestion.incremental_utils import load_entries, merge_entries
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
 
 load_dotenv()
 
@@ -27,6 +32,7 @@ AWESOME_REPO = "OffchainLabs/awesome-stylus"
 AWESOME_README_API = "https://api.github.com/repos/OffchainLabs/awesome-stylus/contents/README.md"
 
 OUTPUT_JSON_PATH = "data/awesome_stylus_code.json"
+JOB_NAME = "awesome_stylus_code"
 
 ALLOWED_EXTENSIONS = (
     ".rs",
@@ -233,7 +239,12 @@ def collect_repo_files(repo: str) -> List[Dict]:
     return entries
 
 
-def ingest_awesome_stylus_code():
+def ingest_awesome_stylus_code(force_refresh: bool = False):
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return 0
+
     entries: List[Dict] = []
     readme = fetch_text(
         AWESOME_README_API,
@@ -265,6 +276,7 @@ def ingest_awesome_stylus_code():
     write_ingestion_log(
         f"[ok] Saved {len(merged)} community code entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
     )
+    record_ingestion_stats(JOB_NAME, stats)
     return len(merged)
 
 
