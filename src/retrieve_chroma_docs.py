@@ -41,6 +41,7 @@ AGENT_GUIDANCE = {
         "Return references, tools, and links first.",
         "When possible, point to exact repos/docs/pages for implementation details.",
         "If retrieval context is insufficient, say so explicitly instead of guessing.",
+        "Context chunks include metadata (source/section/chunk X/Y/url). Use it to judge scope and prefer higher-level chunks over isolated code snippets.",
     ],
 }
 
@@ -132,6 +133,75 @@ def join_chunks_limited(chunks, max_chars=10000):
     return combined.strip()
 
 
+def safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_chunk_position(meta):
+    idx = safe_int(meta.get("chunk_index"))
+    total = safe_int(meta.get("chunk_total"))
+    if idx is None or total is None or total <= 0:
+        return None
+    if total == 1:
+        return 0.0
+    # Normalize to 0-1 so early chunks score higher.
+    return max(0.0, min(1.0, idx / max(total - 1, 1)))
+
+
+def format_chunk_with_metadata(hit: dict) -> str:
+    meta = hit.get("metadata") or {}
+    title = meta.get("title") or meta.get("section") or meta.get("repo") or "Source"
+    section = meta.get("section") or meta.get("category") or ""
+    subsection = meta.get("subsection") or ""
+    source = meta.get("source") or ""
+    url = meta.get("url") or meta.get("repo_url") or ""
+
+    idx = safe_int(meta.get("chunk_index"))
+    total = safe_int(meta.get("chunk_total"))
+    position_label = None
+    if idx is not None and total:
+        position_label = f"chunk {idx + 1}/{total}"
+
+    header_parts = [title]
+    if section:
+        header_parts.append(section)
+    if subsection:
+        header_parts.append(subsection)
+    if source:
+        header_parts.append(f"source={source}")
+    if position_label:
+        header_parts.append(position_label)
+    if url:
+        header_parts.append(url)
+
+    header = " | ".join(part.strip() for part in header_parts if part)
+    body = (hit.get("text") or "").strip()
+    if not header:
+        return body
+    return f"[{header}]\n{body}"
+
+
+def limit_hits_per_parent(ranked_hits, max_per_parent=2):
+    if max_per_parent <= 0:
+        return ranked_hits
+
+    counts = {}
+    limited = []
+    for hit in ranked_hits:
+        meta = hit.get("metadata") or {}
+        parent_id = meta.get("parent_id")
+        if parent_id:
+            seen = counts.get(parent_id, 0)
+            if seen >= max_per_parent:
+                continue
+            counts[parent_id] = seen + 1
+        limited.append(hit)
+    return limited
+
+
 def is_tool_query(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(token in lowered for token in TOOL_QUERY_HINTS)
@@ -207,6 +277,7 @@ def score_hit(hit, prefs):
     subsection = (metadata.get("subsection") or "").lower()
     source = (metadata.get("source") or "").lower()
     repo = (metadata.get("repo") or "").lower()
+    parent_id = metadata.get("parent_id")
     distance = hit.get("distance")
 
     score = 0.0
@@ -283,6 +354,15 @@ def score_hit(hit, prefs):
             score -= 0.35
         if section in {"examples", "libraries", "tools", "projects"}:
             score -= 0.6
+
+    # Favor early chunks from the same parent to avoid mid-doc orphan context.
+    chunk_position = get_chunk_position(metadata)
+    if chunk_position is not None:
+        score += chunk_position * 0.6  # later chunks slightly penalized
+
+    # Slight diversity encouragement: avoid clustering too many chunks from the same parent.
+    if parent_id:
+        score += 0.05
 
     return score
 
@@ -662,8 +742,12 @@ def retrieve_stylus_context(
         hits,
         key=lambda hit: score_hit(hit, prefs=prefs),
     )
-    docs = [hit.get("text", "") for hit in ranked_hits]
-    context = join_chunks_limited(docs, max_chars=max_chars)
+
+    # Cap per parent_id to reduce repetitive slices from the same source page.
+    ranked_hits = limit_hits_per_parent(ranked_hits, max_per_parent=2)
+
+    formatted_docs = [format_chunk_with_metadata(hit) for hit in ranked_hits]
+    context = join_chunks_limited(formatted_docs, max_chars=max_chars)
 
     if prefs["prefer_tools"]:
         tool_summary = build_tool_summary(ranked_hits)
