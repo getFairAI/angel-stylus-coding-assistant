@@ -1,4 +1,5 @@
 from chroma_query import get_chroma_documents
+from feedback_store import get_feedback_documents
 import re
 
 
@@ -18,6 +19,8 @@ TOOL_QUERY_HINTS = {
     "extension",
     "extensions",
 }
+
+USER_FEEDBACK_SOURCE = "user_feedback"
 
 CODE_REQUEST_HINTS = {
     "write code",
@@ -209,6 +212,10 @@ def score_hit(hit, prefs):
     score = 0.0
     if distance is not None:
         score += float(distance)
+
+    # Strongly prioritize user-approved answers.
+    if source == USER_FEEDBACK_SOURCE:
+        score -= 1.8
 
     # Generalized behavior: prioritize community + tooling sources by default.
     if source == "github_readme" or "source: github readme" in text:
@@ -627,6 +634,15 @@ def retrieve_stylus_context(
     by an external LLM (IDE / MCP / user-selected model).
     """
     hits = get_chroma_documents(user_prompt)
+
+    # Pull in positive user-rated answers as an additional, trusted signal.
+    feedback_hits = get_feedback_documents(user_prompt)
+    if feedback_hits:
+        # Label feedback hits for downstream scorers and prepend so they rank early.
+        for hit in feedback_hits:
+            meta = hit.setdefault("metadata", {})
+            meta.setdefault("source", USER_FEEDBACK_SOURCE)
+        hits = feedback_hits + hits
 
     if not hits:
         return {

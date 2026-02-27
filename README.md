@@ -17,6 +17,7 @@ It indexes official docs, Stylus blog posts, and curated community repos, then r
 - `GET /health`
 - `GET /skills`
 - `POST /skills/{skill_id}/search`
+- `POST /feedback` (thumbs up/down for a prompt + response, feeds logs and optional RAG booster)
 - `POST /openrouter/chat/completions` (server-side OpenRouter proxy; keeps API key off the frontend)
 
 Skill metadata contract (`GET /skills`):

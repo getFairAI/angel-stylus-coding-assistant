@@ -18,6 +18,8 @@ from augmentation_contract import (
     validate_porting_augmentation,
 )
 from basic_logs import write_request_log
+from feedback_store import record_feedback
+from feedback_models import FeedbackPayload
 from skill_registry import (
     SKILL_ID_PORTING_AUDITOR,
     SKILL_ID_RESEARCH,
@@ -76,6 +78,9 @@ class PortingAugmentationValidationRequest(BaseModel):
 class PortingAugmentationCompareRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     augmentation: object
+class FeedbackResponse(BaseModel):
+    feedback_id: str
+    stored: bool
 
 
 def prompt_preview(value: str, max_chars: int = 180) -> str:
@@ -172,6 +177,22 @@ def compare_porting_augmentation_endpoint(request: PortingAugmentationCompareReq
         "llm_augmentation": validated,
         "augmentation_comparison": comparison,
     }
+
+
+@app.post("/feedback", response_model=FeedbackResponse)
+def submit_feedback(payload: FeedbackPayload):
+    """Accepts thumbs up/down feedback for a prompt/response pair."""
+
+    feedback_id = record_feedback(
+        prompt=payload.prompt,
+        response=payload.response,
+        rating=payload.rating,
+        skill=payload.skill,
+        metadata=payload.metadata,
+    )
+    # We always log; storage to Chroma is best-effort, so we return stored=True when rating>0.
+    stored = payload.rating > 0
+    return FeedbackResponse(feedback_id=feedback_id, stored=stored)
 
 
 @app.post("/openrouter/chat/completions")

@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-LOG_DIR = "logs"
+LOG_DIR = os.getenv("LOG_DIR", "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 INGESTION_LOG_FILE = os.path.join(LOG_DIR, "ingestion_logs.log")
