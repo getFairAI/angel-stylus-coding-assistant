@@ -110,7 +110,7 @@ def test_static_plus_augmentation_improves_quality_on_labeled_fixture(tmp_path, 
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=False, max_chars=10000: {
+        lambda _prompt, include_research_contract=False, max_chars=10000, session_id=None: {
             "found": True,
             "context": "retrieval context",
             "references": [],

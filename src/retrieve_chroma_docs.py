@@ -1,5 +1,8 @@
 from chroma_query import get_chroma_documents
+from feedback_store import get_feedback_documents, get_conversation_documents
+from copy import deepcopy
 import re
+from typing import Optional
 
 
 TOOL_QUERY_HINTS = {
@@ -19,6 +22,8 @@ TOOL_QUERY_HINTS = {
     "extensions",
 }
 
+USER_FEEDBACK_SOURCE = "user_feedback"
+
 CODE_REQUEST_HINTS = {
     "write code",
     "generate code",
@@ -30,7 +35,7 @@ CODE_REQUEST_HINTS = {
     "rust contract",
 }
 
-AGENT_GUIDANCE = {
+RESEARCH_AGENT_GUIDANCE = {
     "behavior": "references_first",
     "code_generation": "disallowed",
     "instructions": [
@@ -38,8 +43,26 @@ AGENT_GUIDANCE = {
         "Return references, tools, and links first.",
         "When possible, point to exact repos/docs/pages for implementation details.",
         "If retrieval context is insufficient, say so explicitly instead of guessing.",
+        "Context chunks include metadata (source/section/chunk X/Y/url). Use it to judge scope and prefer higher-level chunks over isolated code snippets.",
     ],
 }
+
+CODE_HELPER_AGENT_GUIDANCE = {
+    "behavior": "references_first",
+    "code_generation": "allowed",
+    "instructions": [
+        "Return references, tools, and links first before showcasing examples.",
+        "Include short Stylus snippets that tie back to retrieved sources and label any illustrative fragments clearly.",
+        "Call out adaptation notes (imports, safety checks, configuration flags) for each snippet.",
+        "If the retrieval lacks the requested detail, say so and avoid fabricating APIs.",
+        "Context chunks include metadata (source/section/chunk X/Y/url). Use it to judge scope and prefer higher-level chunks over isolated code snippets.",
+    ],
+}
+
+
+def _resolve_agent_guidance(template: Optional[dict] = None) -> dict:
+    base = template or RESEARCH_AGENT_GUIDANCE
+    return deepcopy(base)
 
 CANONICAL_REFERENCES = [
     {
@@ -129,6 +152,75 @@ def join_chunks_limited(chunks, max_chars=10000):
     return combined.strip()
 
 
+def safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_chunk_position(meta):
+    idx = safe_int(meta.get("chunk_index"))
+    total = safe_int(meta.get("chunk_total"))
+    if idx is None or total is None or total <= 0:
+        return None
+    if total == 1:
+        return 0.0
+    # Normalize to 0-1 so early chunks score higher.
+    return max(0.0, min(1.0, idx / max(total - 1, 1)))
+
+
+def format_chunk_with_metadata(hit: dict) -> str:
+    meta = hit.get("metadata") or {}
+    title = meta.get("title") or meta.get("section") or meta.get("repo") or "Source"
+    section = meta.get("section") or meta.get("category") or ""
+    subsection = meta.get("subsection") or ""
+    source = meta.get("source") or ""
+    url = meta.get("url") or meta.get("repo_url") or ""
+
+    idx = safe_int(meta.get("chunk_index"))
+    total = safe_int(meta.get("chunk_total"))
+    position_label = None
+    if idx is not None and total:
+        position_label = f"chunk {idx + 1}/{total}"
+
+    header_parts = [title]
+    if section:
+        header_parts.append(section)
+    if subsection:
+        header_parts.append(subsection)
+    if source:
+        header_parts.append(f"source={source}")
+    if position_label:
+        header_parts.append(position_label)
+    if url:
+        header_parts.append(url)
+
+    header = " | ".join(part.strip() for part in header_parts if part)
+    body = (hit.get("text") or "").strip()
+    if not header:
+        return body
+    return f"[{header}]\n{body}"
+
+
+def limit_hits_per_parent(ranked_hits, max_per_parent=2):
+    if max_per_parent <= 0:
+        return ranked_hits
+
+    counts = {}
+    limited = []
+    for hit in ranked_hits:
+        meta = hit.get("metadata") or {}
+        parent_id = meta.get("parent_id")
+        if parent_id:
+            seen = counts.get(parent_id, 0)
+            if seen >= max_per_parent:
+                continue
+            counts[parent_id] = seen + 1
+        limited.append(hit)
+    return limited
+
+
 def is_tool_query(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(token in lowered for token in TOOL_QUERY_HINTS)
@@ -204,11 +296,25 @@ def score_hit(hit, prefs):
     subsection = (metadata.get("subsection") or "").lower()
     source = (metadata.get("source") or "").lower()
     repo = (metadata.get("repo") or "").lower()
+    parent_id = metadata.get("parent_id")
     distance = hit.get("distance")
+    session_match = (
+        prefs.get("session_id")
+        and metadata.get("session_id")
+        and prefs["session_id"] == metadata.get("session_id")
+    )
 
     score = 0.0
     if distance is not None:
         score += float(distance)
+
+    # Strongly prioritize user-approved answers.
+    if source == USER_FEEDBACK_SOURCE:
+        score -= 1.8
+    if source == "conversation":
+        score -= 1.4
+        if session_match:
+            score -= 0.6
 
     # Generalized behavior: prioritize community + tooling sources by default.
     if source == "github_readme" or "source: github readme" in text:
@@ -276,6 +382,15 @@ def score_hit(hit, prefs):
             score -= 0.35
         if section in {"examples", "libraries", "tools", "projects"}:
             score -= 0.6
+
+    # Favor early chunks from the same parent to avoid mid-doc orphan context.
+    chunk_position = get_chunk_position(metadata)
+    if chunk_position is not None:
+        score += chunk_position * 0.6  # later chunks slightly penalized
+
+    # Slight diversity encouragement: avoid clustering too many chunks from the same parent.
+    if parent_id:
+        score += 0.05
 
     return score
 
@@ -618,6 +733,10 @@ def retrieve_stylus_context(
     user_prompt: str,
     max_chars: int = 10000,
     include_research_contract: bool = True,
+    session_id: Optional[str] = None,
+    agent_guidance: Optional[dict] = None,
+    skip_code_policy: bool = False,
+    force_code_request: Optional[bool] = None,
 ):
     """
     Retrieve relevant Stylus documentation context for a given user query.
@@ -626,7 +745,25 @@ def retrieve_stylus_context(
     It only returns retrieved documentation chunks, intended to be consumed
     by an external LLM (IDE / MCP / user-selected model).
     """
+    agent_guidance_payload = _resolve_agent_guidance(agent_guidance)
     hits = get_chroma_documents(user_prompt)
+
+    # Pull in positive user-rated answers as an additional, trusted signal.
+    feedback_hits = get_feedback_documents(user_prompt)
+    if feedback_hits:
+        # Label feedback hits for downstream scorers and prepend so they rank early.
+        for hit in feedback_hits:
+            meta = hit.setdefault("metadata", {})
+            meta.setdefault("source", USER_FEEDBACK_SOURCE)
+        hits = feedback_hits + hits
+
+    # Pull in positive-rated conversation turns (optionally scoped to session).
+    convo_hits = get_conversation_documents(user_prompt, session_id=session_id)
+    if convo_hits:
+        for hit in convo_hits:
+            meta = hit.setdefault("metadata", {})
+            meta.setdefault("source", "conversation")
+        hits = convo_hits + hits
 
     if not hits:
         return {
@@ -636,25 +773,30 @@ def retrieve_stylus_context(
                 "No relevant Stylus documentation was found for this query. "
                 "The topic may be undocumented, outside Stylus scope, or the question may be too vague."
             ),
-            "agent_guidance": AGENT_GUIDANCE,
+            "agent_guidance": agent_guidance_payload,
             "references": [],
         }
 
-    code_request = is_code_request(user_prompt)
+    code_request = force_code_request if force_code_request is not None else is_code_request(user_prompt)
     prefs = get_query_preferences(user_prompt, code_request=code_request)
+    prefs["session_id"] = session_id
     ranked_hits = sorted(
         hits,
         key=lambda hit: score_hit(hit, prefs=prefs),
     )
-    docs = [hit.get("text", "") for hit in ranked_hits]
-    context = join_chunks_limited(docs, max_chars=max_chars)
+
+    # Cap per parent_id to reduce repetitive slices from the same source page.
+    ranked_hits = limit_hits_per_parent(ranked_hits, max_per_parent=2)
+
+    formatted_docs = [format_chunk_with_metadata(hit) for hit in ranked_hits]
+    context = join_chunks_limited(formatted_docs, max_chars=max_chars)
 
     if prefs["prefer_tools"]:
         tool_summary = build_tool_summary(ranked_hits)
         if tool_summary:
             context = f"{tool_summary}\n\n{context}"
 
-    if code_request:
+    if code_request and not skip_code_policy:
         context = (
             "Policy: this query appears to request code generation. "
             "For Stylus MCP consumers, return references and tooling guidance instead of writing code.\n\n"
@@ -686,7 +828,28 @@ def retrieve_stylus_context(
         "context": context,
         "chunks_used": len(ranked_hits),
         "query_mode": "code_request" if code_request else ("tooling" if prefs["prefer_tools"] else "general"),
-        "agent_guidance": AGENT_GUIDANCE,
+        "agent_guidance": agent_guidance_payload,
         "references": references,
         "references_markdown": references_markdown,
     }
+
+
+def retrieve_stylus_code_context(
+    user_prompt: str,
+    max_chars: int = 10000,
+    include_research_contract: bool = True,
+    session_id: Optional[str] = None,
+):
+    """
+    Stylus code helper version of the retrieval pathway (`search_stylus_code`).
+    Forces code-oriented preferences, skips the default no-code policy, and allows snippet generation.
+    """
+    return retrieve_stylus_context(
+        user_prompt,
+        max_chars=max_chars,
+        include_research_contract=include_research_contract,
+        session_id=session_id,
+        agent_guidance=CODE_HELPER_AGENT_GUIDANCE,
+        skip_code_policy=True,
+        force_code_request=True,
+    )

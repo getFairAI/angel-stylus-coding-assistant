@@ -3,6 +3,14 @@ from bs4 import BeautifulSoup
 import json
 import os
 
+from basic_logs import write_ingestion_log
+from ingestion.incremental_utils import (
+    load_entries,
+    merge_entries,
+    record_ingestion_stats,
+    should_skip_ingestion,
+)
+
 
 # -----------------------------
 # Pages definition (unchanged)
@@ -207,14 +215,14 @@ pages = rust_sdk_pages + rust_cli_pages + concepts_pages + examples_pages + extr
 def clean_page_content(url):
     res = requests.get(url)
     if res.status_code != 200:
-        print(f"[warn] Failed to fetch {url}")
+        write_ingestion_log(f"[warn] Failed to fetch {url}")
         return None
 
     soup = BeautifulSoup(res.text, "html.parser")
 
     main = soup.select_one("article")
     if not main:
-        print(f"[warn] Could not locate main content in {url}")
+        write_ingestion_log(f"[warn] Could not locate main content in {url}")
         return None
 
     for tag in main.select(".table-of-contents, .edit-page-link, nav, footer"):
@@ -232,8 +240,17 @@ def clean_page_content(url):
 # -----------------------------
 # MAIN INGESTION FUNCTION
 # -----------------------------
-def ingest_stylus_docs(output_path="data/stylus_docs.json"):
+JOB_NAME = "stylus_docs"
+
+
+def ingest_stylus_docs(force_refresh: bool = False, output_path="data/stylus_docs.json"):
+    if should_skip_ingestion(JOB_NAME, force_refresh=force_refresh):
+        write_ingestion_log(f"[skip] {JOB_NAME}: previous run had no changes; use --force-refresh to override")
+        record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
+        return
+
     documents = []
+    existing = load_entries(output_path)
 
     for page in pages:
         content = clean_page_content(page["url"])
@@ -241,7 +258,8 @@ def ingest_stylus_docs(output_path="data/stylus_docs.json"):
             continue
 
         metadata = {
-            "category": page["category"]
+            "category": page["category"],
+            "url": page["url"],
         }
         if "subsection" in page:
             metadata["subsection"] = page["subsection"]
@@ -264,12 +282,21 @@ def ingest_stylus_docs(output_path="data/stylus_docs.json"):
             }
         )
 
+    merged, stats = merge_entries(
+        existing,
+        documents,
+        key_fn=lambda e: e.get("metadata", {}).get("url"),
+    )
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(documents, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ Saved {len(documents)} documents to {output_path}")
-    return len(documents)
+    write_ingestion_log(
+        f"[ok] Saved {len(merged)} docs (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {output_path}"
+    )
+    record_ingestion_stats(JOB_NAME, stats)
+    return len(merged)
 
 
 # -----------------------------

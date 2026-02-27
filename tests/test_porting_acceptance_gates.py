@@ -12,7 +12,7 @@ def _stub_retrieval(monkeypatch):
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=False, max_chars=10000: {
+        lambda _prompt, include_research_contract=False, max_chars=10000, session_id=None: {
             "found": True,
             "context": "holdout-fixture retrieval context",
             "references": [],
@@ -205,4 +205,3 @@ def test_porting_acceptance_holdout_prompt_paraphrases_keep_target_sets_stable(t
         signatures.append((tuple(high_names), tuple(low_names)))
 
     assert len(set(signatures)) == 1
-

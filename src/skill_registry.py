@@ -11,10 +11,11 @@ from augmentation_contract import (
     validate_porting_augmentation,
 )
 from contract_analysis import analyze_contract_target
-from retrieve_chroma_docs import retrieve_stylus_context
+from retrieve_chroma_docs import retrieve_stylus_context, retrieve_stylus_code_context
 
 SKILL_ID_RESEARCH = "sift-stylus-research"
 SKILL_ID_PORTING_AUDITOR = "sift-stylus-porting-auditor"
+SKILL_ID_CODE_HELPER = "sift-stylus-code-helper"
 DEFAULT_GENERIC_SYSTEM_PROMPT = (
     "You are Sifter. Use the selected skill's retrieval tool before final answers when evidence is needed. "
     "Prefer concrete references and state uncertainty clearly when evidence is limited."
@@ -96,12 +97,17 @@ def _load_skill_system_prompt(skill_id: str) -> str:
     return DEFAULT_GENERIC_SYSTEM_PROMPT
 
 
-def _run_shared_retrieval(prompt: str) -> dict:
-    return retrieve_stylus_context(prompt, include_research_contract=True)
+def _run_shared_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
+    return retrieve_stylus_context(prompt, include_research_contract=True, session_id=session_id)
 
 
-def _run_porting_retrieval(prompt: str) -> dict:
-    return retrieve_stylus_context(prompt, include_research_contract=False)
+def _run_code_helper_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
+    # Option A (most common): include research contract context
+    return retrieve_stylus_code_context(prompt, include_research_contract=True, session_id=session_id)
+
+    
+def _run_porting_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
+    return retrieve_stylus_context(prompt, include_research_contract=False, session_id=session_id)
 
 
 def _driver_list(values, max_items: int = 3) -> str:
@@ -287,6 +293,14 @@ SKILL_REGISTRY: Dict[str, SkillDefinition] = {
         behavior_hash=_compute_behavior_hash(SKILL_ID_PORTING_AUDITOR),
         search_handler=_run_porting_retrieval,
     ),
+    SKILL_ID_CODE_HELPER: SkillDefinition(
+        skill_id=SKILL_ID_CODE_HELPER,
+        label="Code Helper",
+        description="Code-oriented help for Stylus projects: debugging, patterns, and implementation guidance with citations.",
+        system_prompt=_load_skill_system_prompt(SKILL_ID_CODE_HELPER),
+        behavior_hash=_compute_behavior_hash(SKILL_ID_CODE_HELPER),
+        search_handler=_run_code_helper_retrieval,  # or _run_shared_retrieval
+    ),
 }
 
 
@@ -310,12 +324,12 @@ def list_skills() -> List[dict]:
     ]
 
 
-def run_skill_search(skill_id: str, prompt: str, augmentation: object = None) -> dict:
+def run_skill_search(skill_id: str, prompt: str, augmentation: object = None, session_id: Optional[str] = None) -> dict:
     skill = get_skill(skill_id)
     if skill is None:
         raise KeyError(skill_id)
 
-    payload = skill.search_handler(prompt)
+    payload = skill.search_handler(prompt, session_id=session_id)
     if isinstance(payload, dict):
         payload.setdefault("skill", skill_id)
         payload.setdefault("skill_system_prompt", skill.system_prompt)

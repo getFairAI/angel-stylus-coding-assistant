@@ -64,7 +64,7 @@ def test_porting_audit_endpoint_e2e_local_codebase(monkeypatch, tmp_path):
     monkeypatch.setattr(
         skill_registry,
         "retrieve_stylus_context",
-        lambda _prompt, include_research_contract=False, max_chars=10000: {
+        lambda _prompt, include_research_contract=False, max_chars=10000, session_id=None: {
             "found": True,
             "context": "retrieved references context",
             "references": [],
