@@ -10,6 +10,7 @@ It indexes official docs, Stylus blog posts, and curated community repos, then r
 - Returns references-first context for Stylus questions.
 - Emits `agent_guidance` that sets `code_generation=disallowed`.
 - Does not synthesize contract/application code.
+- For porting-auditor requests with a GitHub target URL, performs static Solidity signal extraction on the target repository/files and injects those findings into the returned context.
 
 ## API
 
@@ -17,6 +18,14 @@ It indexes official docs, Stylus blog posts, and curated community repos, then r
 - `GET /skills`
 - `POST /skills/{skill_id}/search`
 - `POST /openrouter/chat/completions` (server-side OpenRouter proxy; keeps API key off the frontend)
+
+Skill metadata contract (`GET /skills`):
+- `system_prompt`: canonical prompt loaded from `skills/<id>/agents/openai.yaml#default_prompt`
+- `prompt_source`: explicit source path for traceability
+- `skill_doc_path`: path to the published skill instructions (`SKILL.md`)
+- `behavior_hash`: SHA-256 fingerprint over the published skill behavior files
+
+Consumers should use `system_prompt` from `/skills` (instead of frontend-local prompt text) to keep behavior consistent with published skills.
 
 Compatibility aliases:
 - `POST /stylus-chat` -> research skill
@@ -33,9 +42,32 @@ Response (example):
 ```json
 {
   "found": true,
+  "as_of_date": "2026-02-25",
   "context": "Top references:\n1. ...",
   "chunks_used": 25,
   "query_mode": "tooling",
+  "quality_signals": {
+    "confidence": "high",
+    "time_sensitive": false,
+    "evidence_profile": {
+      "official_count": 2,
+      "community_count": 4,
+      "canonical_count": 1,
+      "unique_domains": 3
+    }
+  },
+  "answer_contract": {
+    "format": "direct_answer_why_links",
+    "length_target_lines": "10-20",
+    "uncertainty_mode": "state_uncertainty_plus_best_bet",
+    "audience": "builder_engineer"
+  },
+  "recommended_answer_outline": {
+    "direct_answer": "...",
+    "why": ["..."],
+    "links": [{ "title": "...", "url": "...", "source_type": "official" }],
+    "caveats": []
+  },
   "agent_guidance": {
     "behavior": "references_first",
     "code_generation": "disallowed"
@@ -43,6 +75,9 @@ Response (example):
   "references": [{ "title": "...", "url": "..." }]
 }
 ```
+
+Note: the extended quality fields in this example are produced by
+`/skills/sift-stylus-research/search`. Other skill endpoints may return only the core fields.
 
 OpenRouter proxy request (example):
 
@@ -77,13 +112,18 @@ export OPENROUTER_API_KEY=...
 - `CORS_ORIGINS` for allowed frontend origins
 - `OPENROUTER_API_KEY` for server-side LLM proxying
 
+Runtime note:
+- On startup, backend auto-loads missing env vars from `.env` candidates (current backend repo/worktree, workspace root, and sibling `backend`/`frontend` repos/worktrees) without overriding already-exported shell variables.
+
 ## QA
 
 Repo-level checks:
 
 ```bash
-python -m pytest -q
+python -m pytest
 ```
+
+`pytest` now runs with coverage reporting and an `80%` fail-under gate for backend runtime modules (configured via `pytest.ini` + `.coveragerc`).
 
 Workspace-level check (if using paired workspace scripts):
 

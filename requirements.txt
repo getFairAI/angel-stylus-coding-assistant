@@ -18,3 +18,4 @@ python-dateutil>=2.9.0
 
 # --- Test ---
 pytest>=8.3.0
+pytest-cov>=7.0.0

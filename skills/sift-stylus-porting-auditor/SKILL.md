@@ -11,7 +11,7 @@ Use this skill when a user asks whether a Solidity contract (or codebase) is a g
 - Produces an upside-first candidacy score (`0-100`) with explicit caveats.
 - Compares contracts against a concrete list of "good candidate" and "bad candidate" qualities.
 - Uses independent and anecdotal ecosystem evidence as first-class inputs.
-- Adds ballpark impact estimates for gas savings and/or execution-speed improvements using explicit assumptions.
+- Adds ballpark impact estimates for gas savings and/or execution-speed improvements as directional percentage ranges.
 - Flags hard blockers and gives mitigation paths.
 - Returns line-referenced findings when source code is available.
 - Optimizes for partial migration decisions (what to port now vs what should remain in Solidity).
@@ -21,7 +21,7 @@ Use this skill when a user asks whether a Solidity contract (or codebase) is a g
 - One Solidity contract file, a set of Solidity files, or a GitHub repository URL.
 - Optional architecture notes (proxy model, upgrade path, critical invariants).
 - Optional performance context (high-traffic paths, current bottlenecks).
-- Optional usage volume assumptions (calls/day, calls/month). If missing, use a clearly labeled arbitrary baseline.
+- Optional workload context from the user. Use it only as context; keep estimates percentage-based and directional.
 
 If the user supplies a full codebase, default to map-only triage and recommend deep-dive targets.
 
@@ -52,6 +52,8 @@ Details and curated links live in:
 ## Evaluation workflow
 1. Collect source and dependency context.
 2. Run quick static signal extraction with `python scripts/extract_contract_signals.py <path-or-file>`.
+   - For GitHub targets, clone/fetch the referenced repo (or file path) and run extraction on actual Solidity sources.
+   - For local IDE/CLI use, run extraction directly against local paths/workspaces.
 3. Classify contract archetype using `references/archetype-analogs.md`.
 4. Score three dimensions: `UpsideScore` (`70%`), `PortabilityScore` (`20%`), and `IntegrationScore` (`10%`).
 5. Evaluate hybrid-boundary fit:
@@ -60,8 +62,12 @@ Details and curated links live in:
 - Storage coupling and upgrade coupling to Solidity neighbors.
 6. Identify and report hard blockers with mitigations.
 7. List unknowns and add a reliability disclaimer when unknowns are material.
-8. Emit Markdown report plus JSON appendix (schema in `references/output-schema.md`).
-9. Persist the JSON appendix to disk using `python scripts/save_json_appendix.py --stdin` (paste JSON through stdin) or `python scripts/save_json_appendix.py --in <json-file>`.
+8. If backend payload includes `llm_augmentation_contract`, run a bounded second pass:
+   - Keep static analyzer ranking as baseline.
+   - Add only citation-backed augmentation claims that satisfy the provided schema.
+   - If schema/citation requirements cannot be met, fall back to static-only recommendations.
+9. Emit Markdown report plus JSON appendix (schema in `references/output-schema.md`).
+10. Persist the JSON appendix to disk using `python scripts/save_json_appendix.py --stdin` (paste JSON through stdin) or `python scripts/save_json_appendix.py --in <json-file>`.
 
 ## Good candidate qualities
 Strong candidates usually show several of these:
@@ -103,20 +109,29 @@ Follow `references/output-schema.md`.
 
 At minimum include:
 - High-level recommendation first (prose, 3-6 sentences) before any numeric analysis.
+- Keep the high-level recommendation upside-first:
+  - Lead with where Stylus can add value (compute hotspots, carveout opportunities, likely directional gains).
+  - Do not open with a fault/caveat-only narrative, even for `defer` verdicts.
 - Explicit recommendation stance in that prose: `port now`, `pilot first`, or `defer`.
 - Explicit impact verdicts:
 - `high_stylus_benefit`
 - `medium_stylus_benefit`
 - `low_stylus_impact`
-- Ballpark impact estimate section with explicit assumptions:
-  - If user does not provide usage volume, assume `100000` relevant executions/day and state that this is arbitrary.
-  - Provide per-call gas delta estimate (range and percent when possible).
-  - Provide aggregate daily/monthly gas delta estimate based on stated assumptions.
-  - Provide execution-speed or throughput improvement estimate (range, percent, or x-multiple).
+- Ballpark impact estimate section with percentage-based directional ranges:
+  - Provide gas savings estimate as a percent range.
+  - Provide execution-speed or throughput improvement estimate (percent range and/or x-multiple).
   - Label confidence (`high|medium|low`) and why.
 - Candidate summary.
 - Score breakdown.
+- Potential upside snapshot:
+  - At least one concrete "where Stylus could still help" point per analyzed target set.
+  - If overall verdict is low-impact, still include at least one bounded pilot/carveout suggestion.
 - Evidence-backed good/bad signal findings.
+- Bounded LLM augmentation outputs (when provided by backend contract):
+  - `additional_good_fit_signals`
+  - `additional_bad_fit_signals`
+  - `recommended_carveouts`
+  - Claim-level citations and confidence
 - Hard blockers and mitigations.
 - Unknowns and reliability disclaimer.
 - JSON appendix with machine-readable fields.

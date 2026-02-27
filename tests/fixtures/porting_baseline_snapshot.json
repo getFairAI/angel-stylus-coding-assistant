@@ -1,0 +1,34 @@
+{
+  "github_blob": {
+    "mode": "github_file",
+    "owner": "Uniswap",
+    "repo": "v3-core",
+    "subpath": "contracts/UniswapV3Pool.sol"
+  },
+  "github_repo": {
+    "mode": "github_repo",
+    "owner": "gmx-io",
+    "repo": "gmx-contracts",
+    "subpath": ""
+  },
+  "local_file": {
+    "mode": "local_path",
+    "files": 1,
+    "contracts": 1,
+    "final_hint": 78,
+    "high_top": "ComputeHeavy.sol",
+    "low_top": ""
+  },
+  "local_dir": {
+    "mode": "local_path",
+    "files": 2,
+    "contracts": 2,
+    "final_hint": 60,
+    "high_top": "ComputeHeavy.sol",
+    "low_top": "Router.sol"
+  },
+  "cache_behavior": {
+    "local_dir_first_cache_hit": false,
+    "local_dir_second_cache_hit": true
+  }
+}

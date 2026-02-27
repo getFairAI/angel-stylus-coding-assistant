@@ -57,3 +57,8 @@ Thumbs.db
 # =========================
 tmp/
 .cache/
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/

@@ -7,7 +7,13 @@ import uvicorn
 import time
 import os
 import requests
+from typing import Optional
 
+from augmentation_contract import (
+    build_porting_augmentation_contract,
+    compare_porting_analysis_with_augmentation,
+    validate_porting_augmentation,
+)
 from basic_logs import write_request_log
 from skill_registry import (
     SKILL_ID_PORTING_AUDITOR,
@@ -50,6 +56,25 @@ class StylusRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
 
 
+class SkillSearchRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    augmentation: Optional[object] = None
+
+
+class PortingStylusRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    augmentation: object
+
+
+class PortingAugmentationValidationRequest(BaseModel):
+    augmentation: object
+
+
+class PortingAugmentationCompareRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    augmentation: object
+
+
 def prompt_preview(value: str, max_chars: int = 180) -> str:
     return (value or "").replace("\n", " ").strip()[:max_chars]
 
@@ -64,13 +89,16 @@ def skills_index():
     return {"skills": list_skills()}
 
 
-def execute_skill_search(skill_id: str, request: StylusRequest):
-    preview = prompt_preview(request.prompt)
+def execute_skill_search(skill_id: str, prompt: str, augmentation: object = None):
+    preview = prompt_preview(prompt)
     write_request_log(f"User started a skill request | skill={skill_id} | Prompt preview: {preview}")
     start_time = time.time()
 
     try:
-        result = run_skill_search(skill_id, request.prompt)
+        if augmentation is None:
+            result = run_skill_search(skill_id, prompt)
+        else:
+            result = run_skill_search(skill_id, prompt, augmentation)
     except Exception as exc:
         write_request_log(f"[error] Skill retrieval failed | skill={skill_id} | {type(exc).__name__}: {exc}")
         result = {
@@ -91,20 +119,57 @@ def execute_skill_search(skill_id: str, request: StylusRequest):
 
 
 @app.post("/skills/{skill_id}/search")
-def skill_search(skill_id: str, request: StylusRequest):
+def skill_search(skill_id: str, request: SkillSearchRequest):
     if not get_skill(skill_id):
         raise HTTPException(status_code=404, detail=f"Unsupported skill '{skill_id}'.")
-    return execute_skill_search(skill_id, request)
+    if skill_id == SKILL_ID_PORTING_AUDITOR and request.augmentation is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Porting skill requires an 'augmentation' payload object.",
+        )
+    return execute_skill_search(skill_id, request.prompt, request.augmentation)
 
 
 @app.post("/stylus-chat")
 def stylus_chat(request: StylusRequest):
-    return execute_skill_search(SKILL_ID_RESEARCH, request)
+    return execute_skill_search(SKILL_ID_RESEARCH, request.prompt)
 
 
 @app.post("/stylus-porting-audit")
-def stylus_porting_audit(request: StylusRequest):
-    return execute_skill_search(SKILL_ID_PORTING_AUDITOR, request)
+def stylus_porting_audit(request: PortingStylusRequest):
+    return execute_skill_search(SKILL_ID_PORTING_AUDITOR, request.prompt, request.augmentation)
+
+
+@app.post("/skills/sift-stylus-porting-auditor/validate-augmentation")
+def validate_porting_augmentation_endpoint(request: PortingAugmentationValidationRequest):
+    contract = build_porting_augmentation_contract()
+    validated = validate_porting_augmentation(request.augmentation, contract=contract)
+    return {
+        "skill": SKILL_ID_PORTING_AUDITOR,
+        "llm_augmentation_contract": contract,
+        "llm_augmentation": validated,
+    }
+
+
+@app.post("/skills/sift-stylus-porting-auditor/compare-augmentation")
+def compare_porting_augmentation_endpoint(request: PortingAugmentationCompareRequest):
+    base_payload = run_skill_search(SKILL_ID_PORTING_AUDITOR, request.prompt)
+    analysis = base_payload.get("codebase_analysis") if isinstance(base_payload, dict) else None
+
+    contract = build_porting_augmentation_contract()
+    validated = validate_porting_augmentation(request.augmentation, contract=contract)
+    comparison = compare_porting_analysis_with_augmentation(
+        analysis,
+        validated,
+        contract=contract,
+    )
+    return {
+        "skill": SKILL_ID_PORTING_AUDITOR,
+        "codebase_analysis": analysis,
+        "llm_augmentation_contract": contract,
+        "llm_augmentation": validated,
+        "augmentation_comparison": comparison,
+    }
 
 
 @app.post("/openrouter/chat/completions")

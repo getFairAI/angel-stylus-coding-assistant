@@ -4,21 +4,28 @@ The skill response should include a human-readable Markdown report followed by a
 
 ## Markdown sections (required)
 1. High-Level Recommendation (Prose)
-2. Impact Verdicts
-3. Ballpark Impact Estimate (Assumed Usage)
-4. Candidate Summary
-5. Score Breakdown
-6. Good-Candidate Signals Found
-7. Bad-Candidate Signals Found
-8. Hard Blockers and Mitigations
-9. Unknowns and Reliability Disclaimer
-10. Evidence Snapshot
+2. Potential Upside Snapshot
+3. Impact Verdicts
+4. Ballpark Impact Estimate (%)
+5. Candidate Summary
+6. Score Breakdown
+7. Good-Candidate Signals Found
+8. Bad-Candidate Signals Found
+9. Hard Blockers and Mitigations
+10. Unknowns and Reliability Disclaimer
+11. Evidence Snapshot
 
 ### High-Level Recommendation (Prose) requirements
 - Must appear first in the report.
 - Must be 3-6 sentences in plain prose.
 - Must state one clear stance: `port now`, `pilot first`, or `defer`.
 - Must briefly justify the stance using upside vs migration complexity.
+- Must emphasize potential value before caveats, even when stance is `defer`.
+
+### Potential Upside Snapshot requirements
+- Must appear before risk-heavy sections.
+- Must include concrete upside opportunities from analyzed signals (for example compute hotspots, bounded carveouts, or interface-isolated pilots).
+- If overall stance is `defer`, still include at least one bounded pilot/carveout opportunity.
 
 ### Impact Verdicts requirements
 - Must explicitly classify contracts as:
@@ -29,14 +36,17 @@ The skill response should include a human-readable Markdown report followed by a
 - Keep this section judgment-focused. Do not provide phased roadmap steps unless requested.
 
 ### Ballpark Impact Estimate requirements
-- Must include explicit usage assumptions.
-- If usage is not user-provided, default to `100000` relevant executions/day and label as arbitrary baseline.
 - Must provide:
-  - Per-call gas estimate delta (range if uncertain).
-  - Aggregate daily and monthly gas estimate delta from stated assumptions.
+  - Gas savings estimate in percent range (directional).
   - Execution-speed or throughput estimate (percent and/or x-multiple).
   - Confidence level and caveat notes.
 - Estimates must be directional and approximate; do not present as precise measurements.
+
+### Bounded LLM augmentation requirements (when contract is provided)
+- Keep static analyzer ranking as the baseline.
+- Add only schema-valid augmentation claims with citations.
+- Every augmentation claim must include at least one URL citation.
+- If schema or citation rules fail, fall back to static-only recommendation behavior.
 
 ## JSON appendix
 ```json
@@ -82,27 +92,10 @@ The skill response should include a human-readable Markdown report followed by a
     ]
   },
   "ballpark_estimate": {
-    "usage_assumptions": {
-      "provided_by_user": false,
-      "executions_per_day": 100000,
-      "notes": "string"
-    },
     "gas": {
-      "per_call_delta_gas": {
-        "min": 0,
-        "max": 0
-      },
-      "per_call_percent_delta": {
+      "percent_delta": {
         "min_percent": 0,
         "max_percent": 0
-      },
-      "daily_delta_gas": {
-        "min": 0,
-        "max": 0
-      },
-      "monthly_delta_gas": {
-        "min": 0,
-        "max": 0
       }
     },
     "performance": {
@@ -117,6 +110,36 @@ The skill response should include a human-readable Markdown report followed by a
     },
     "confidence": "high | medium | low",
     "basis": ["string"]
+  },
+  "llm_augmentation": {
+    "mode": "bounded_second_pass | static_only_fallback",
+    "additional_good_fit_signals": [
+      {
+        "contract": "string",
+        "signal": "string",
+        "confidence": "high | medium | low",
+        "citations": ["https://..."]
+      }
+    ],
+    "additional_bad_fit_signals": [
+      {
+        "contract": "string",
+        "signal": "string",
+        "confidence": "high | medium | low",
+        "citations": ["https://..."]
+      }
+    ],
+    "recommended_carveouts": [
+      {
+        "contract": "string",
+        "recommendation": "string",
+        "rationale": "string",
+        "confidence": "high | medium | low",
+        "citations": ["https://..."]
+      }
+    ],
+    "confidence": "high | medium | low",
+    "citations": ["https://..."]
   },
   "contract": {
     "name": "string",
