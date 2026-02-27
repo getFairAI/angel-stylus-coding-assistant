@@ -16,6 +16,10 @@ import uuid
 from typing import Dict, List, Optional
 
 
+def _feedback_log_path() -> str:
+    return os.path.join(_log_dir(), "feedback_events.jsonl")
+
+
 def _log_dir() -> str:
     path = os.getenv("LOG_DIR", "logs")
     os.makedirs(path, exist_ok=True)
@@ -103,6 +107,19 @@ def _iter_events():
             except json.JSONDecodeError:
                 continue
 
+def _iter_feedback_events():
+    path = _feedback_log_path()
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
 def get_conversation(session_id: str) -> Dict:
     """Return the full conversation thread for a session_id.
@@ -174,9 +191,7 @@ def export_conversations(*, min_rating: Optional[int] = None, since_timestamp: O
 
     rated_turns: List[Dict] = []
 
-    for event in _iter_events() or []:
-        if event.get("type") != "turn":
-            continue
+    for event in _iter_feedback_events() or []:
         rating = event.get("rating")
         if rating is None:
             continue
@@ -185,21 +200,16 @@ def export_conversations(*, min_rating: Optional[int] = None, since_timestamp: O
         ts = event.get("timestamp")
         if since_timestamp is not None and (ts is None or ts < since_timestamp):
             continue
-        session_id = event.get("session_id")
-        if not session_id:
-            continue
         rated_turns.append(
             {
-                "session_id": session_id,
-                "turn_id": event.get("turn_id"),
+                "turn_id": event.get("id"),
                 "prompt": event.get("prompt"),
                 "response": event.get("response"),
                 "rating": rating,
                 "skill": event.get("skill"),
                 "timestamp": ts,
-                "metadata": event.get("metadata"),
             }
         )
-
+    
     rated_turns.sort(key=lambda t: t.get("timestamp") or 0)
     return rated_turns[:max_turns]
