@@ -1,5 +1,6 @@
 from chroma_query import get_chroma_documents
 from feedback_store import get_feedback_documents, get_conversation_documents
+from copy import deepcopy
 import re
 from typing import Optional
 
@@ -34,7 +35,7 @@ CODE_REQUEST_HINTS = {
     "rust contract",
 }
 
-AGENT_GUIDANCE = {
+RESEARCH_AGENT_GUIDANCE = {
     "behavior": "references_first",
     "code_generation": "disallowed",
     "instructions": [
@@ -45,6 +46,23 @@ AGENT_GUIDANCE = {
         "Context chunks include metadata (source/section/chunk X/Y/url). Use it to judge scope and prefer higher-level chunks over isolated code snippets.",
     ],
 }
+
+CODE_HELPER_AGENT_GUIDANCE = {
+    "behavior": "references_first",
+    "code_generation": "allowed",
+    "instructions": [
+        "Return references, tools, and links first before showcasing examples.",
+        "Include short Stylus snippets that tie back to retrieved sources and label any illustrative fragments clearly.",
+        "Call out adaptation notes (imports, safety checks, configuration flags) for each snippet.",
+        "If the retrieval lacks the requested detail, say so and avoid fabricating APIs.",
+        "Context chunks include metadata (source/section/chunk X/Y/url). Use it to judge scope and prefer higher-level chunks over isolated code snippets.",
+    ],
+}
+
+
+def _resolve_agent_guidance(template: Optional[dict] = None) -> dict:
+    base = template or RESEARCH_AGENT_GUIDANCE
+    return deepcopy(base)
 
 CANONICAL_REFERENCES = [
     {
@@ -716,6 +734,9 @@ def retrieve_stylus_context(
     max_chars: int = 10000,
     include_research_contract: bool = True,
     session_id: Optional[str] = None,
+    agent_guidance: Optional[dict] = None,
+    skip_code_policy: bool = False,
+    force_code_request: Optional[bool] = None,
 ):
     """
     Retrieve relevant Stylus documentation context for a given user query.
@@ -724,6 +745,7 @@ def retrieve_stylus_context(
     It only returns retrieved documentation chunks, intended to be consumed
     by an external LLM (IDE / MCP / user-selected model).
     """
+    agent_guidance_payload = _resolve_agent_guidance(agent_guidance)
     hits = get_chroma_documents(user_prompt)
 
     # Pull in positive user-rated answers as an additional, trusted signal.
@@ -751,11 +773,11 @@ def retrieve_stylus_context(
                 "No relevant Stylus documentation was found for this query. "
                 "The topic may be undocumented, outside Stylus scope, or the question may be too vague."
             ),
-            "agent_guidance": AGENT_GUIDANCE,
+            "agent_guidance": agent_guidance_payload,
             "references": [],
         }
 
-    code_request = is_code_request(user_prompt)
+    code_request = force_code_request if force_code_request is not None else is_code_request(user_prompt)
     prefs = get_query_preferences(user_prompt, code_request=code_request)
     prefs["session_id"] = session_id
     ranked_hits = sorted(
@@ -774,7 +796,7 @@ def retrieve_stylus_context(
         if tool_summary:
             context = f"{tool_summary}\n\n{context}"
 
-    if code_request:
+    if code_request and not skip_code_policy:
         context = (
             "Policy: this query appears to request code generation. "
             "For Stylus MCP consumers, return references and tooling guidance instead of writing code.\n\n"
@@ -806,7 +828,28 @@ def retrieve_stylus_context(
         "context": context,
         "chunks_used": len(ranked_hits),
         "query_mode": "code_request" if code_request else ("tooling" if prefs["prefer_tools"] else "general"),
-        "agent_guidance": AGENT_GUIDANCE,
+        "agent_guidance": agent_guidance_payload,
         "references": references,
         "references_markdown": references_markdown,
     }
+
+
+def retrieve_stylus_code_context(
+    user_prompt: str,
+    max_chars: int = 10000,
+    include_research_contract: bool = True,
+    session_id: Optional[str] = None,
+):
+    """
+    Stylus code helper version of the retrieval pathway (`search_stylus_code`).
+    Forces code-oriented preferences, skips the default no-code policy, and allows snippet generation.
+    """
+    return retrieve_stylus_context(
+        user_prompt,
+        max_chars=max_chars,
+        include_research_contract=include_research_contract,
+        session_id=session_id,
+        agent_guidance=CODE_HELPER_AGENT_GUIDANCE,
+        skip_code_policy=True,
+        force_code_request=True,
+    )

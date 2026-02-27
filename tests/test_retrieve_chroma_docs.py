@@ -35,6 +35,39 @@ def test_code_request_returns_policy_and_reference_header(monkeypatch):
     assert result["agent_guidance"]["code_generation"] == "disallowed"
 
 
+def test_code_helper_context_allows_snippets(monkeypatch):
+    hits = [
+        {
+            "text": (
+                "Source: GitHub README\n"
+                "Repo: OffchainLabs/awesome-stylus/\n"
+                "Section: Examples\n\n"
+                "- [Keccak Looper](https://gist.github.com/cygaar/ee3cf1d1f98a57369717c9d91e076fd1) "
+                "- A Rust contract that loops n times and hashes input"
+            ),
+            "metadata": {
+                "source": "github_readme",
+                "repo": "OffchainLabs/awesome-stylus/",
+                "section": "Examples",
+                "title": "Examples",
+                "url": "https://github.com/OffchainLabs/awesome-stylus/",
+            },
+            "distance": 0.1,
+        }
+    ]
+    monkeypatch.setattr(retrieval, "get_chroma_documents", lambda _prompt: hits)
+
+    result = retrieval.retrieve_stylus_code_context(
+        "Write a Rust contract that loops and hashes an input string"
+    )
+
+    assert result["found"] is True
+    assert result["query_mode"] == "code_request"
+    assert "Policy: this query appears to request code generation" not in result["context"]
+    assert result["agent_guidance"]["behavior"] == "references_first"
+    assert result["agent_guidance"]["code_generation"] == "allowed"
+
+
 def test_reference_filter_rejects_local_urls(monkeypatch):
     hits = [
         {

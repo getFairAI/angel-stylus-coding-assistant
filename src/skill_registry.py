@@ -11,7 +11,7 @@ from augmentation_contract import (
     validate_porting_augmentation,
 )
 from contract_analysis import analyze_contract_target
-from retrieve_chroma_docs import retrieve_stylus_context
+from retrieve_chroma_docs import retrieve_stylus_context, retrieve_stylus_code_context
 
 SKILL_ID_RESEARCH = "sift-stylus-research"
 SKILL_ID_PORTING_AUDITOR = "sift-stylus-porting-auditor"
@@ -103,7 +103,7 @@ def _run_shared_retrieval(prompt: str, session_id: Optional[str] = None) -> dict
 
 def _run_code_helper_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
     # Option A (most common): include research contract context
-    return retrieve_stylus_context(prompt, include_research_contract=True, session_id=session_id)
+    return retrieve_stylus_code_context(prompt, include_research_contract=True, session_id=session_id)
 
     
 def _run_porting_retrieval(prompt: str, session_id: Optional[str] = None) -> dict:
