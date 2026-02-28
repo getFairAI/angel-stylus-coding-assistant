@@ -37,6 +37,7 @@ from conversation_store import (
     get_conversation,
     export_conversations,
 )
+from platform_feedback import list_platform_feedback_events, record_platform_feedback
 from feedback_models import FeedbackPayload
 from skill_registry import (
     SKILL_ID_PORTING_AUDITOR,
@@ -238,7 +239,29 @@ class ConversationExportResponse(BaseModel):
     turns: List[RatedTurnExport]
 class FeedbackResponse(BaseModel):
     feedback_id: str
-    stored: bool
+
+
+class PlatformFeedbackPayload(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    source: Optional[str] = Field(default=None, max_length=200)
+
+
+class PlatformFeedbackResponse(BaseModel):
+    feedback_id: str
+
+
+class PlatformFeedbackEntry(BaseModel):
+    id: str
+    timestamp: int
+    message: str
+    source: Optional[str] = None
+
+
+class PlatformFeedbackListResponse(BaseModel):
+    feedback: List[PlatformFeedbackEntry]
+    offset: int
+    next_offset: int
+    has_more: bool
 
 
 def prompt_preview(value: str, max_chars: int = 180) -> str:
@@ -537,6 +560,39 @@ def submit_feedback(payload: FeedbackPayload):
     # We always log; storage to Chroma is best-effort, so we return stored=True when rating>0.
     stored = payload.rating > 0 
     return FeedbackResponse(feedback_id=feedback_id, stored=stored)
+
+
+@app.post("/platform-feedback", response_model=PlatformFeedbackResponse)
+def platform_feedback(payload: PlatformFeedbackPayload):
+    """Capture free-form platform feedback and persist it to the platform log."""
+
+    if payload.source is None:
+        payload.source = "web"
+
+    feedback_id = record_platform_feedback(
+        message=payload.message,
+        source=payload.source,
+    )
+    return PlatformFeedbackResponse(feedback_id=feedback_id)
+
+
+@app.get("/admin/platform-feedback", response_model=PlatformFeedbackListResponse)
+def admin_platform_feedback(
+    limit: int = 100,
+    offset: int = 0,
+    _=Depends(require_admin_token),
+):
+    """Admin endpoint that returns the newest platform feedback entries."""
+
+    entries = list_platform_feedback_events(limit=limit, offset=offset)
+    has_more = len(entries) == limit
+    next_offset = offset + len(entries)
+    return PlatformFeedbackListResponse(
+        feedback=entries,
+        offset=offset,
+        next_offset=next_offset,
+        has_more=has_more,
+    )
 
 
 class AdminAuthRequest(BaseModel):
