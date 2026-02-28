@@ -18,7 +18,9 @@ It indexes official docs, Stylus blog posts, and curated community repos, then r
 - `GET /skills`
 - `POST /skills/{skill_id}/search`
 - `POST /feedback` (thumbs up/down for a prompt + response, feeds logs and optional RAG booster)
+- `POST /platform-feedback` (captures general platform feedback entries and logs them for later review)
 - `POST /openrouter/chat/completions` (server-side OpenRouter proxy; keeps API key off the frontend)
+- `GET /admin/platform-feedback` (requires admin token; streams the most recent platform feedback lines)
 - `POST /admin/auth` (exchange admin password for a short-lived bearer token)
 - `GET /admin/logs/{request|ingestion|stats}/paginate` (paged log/text slice)
 - `GET /admin/logs/{request|ingestion|stats}/stream` (stream entire log file)
@@ -121,6 +123,8 @@ curl -X POST http://localhost:8001/feedback \
     "metadata":{"client":"cli"}
   }'
 ```
+
+- Platform feedback: `POST /platform-feedback` lets clients submit free-form messages, optional categories, and metadata; entries append to `logs/platform_feedback.jsonl` (override path with `PLATFORM_FEEDBACK_LOG_PATH`). Administrators can fetch those entries via `GET /admin/platform-feedback` when authenticated.
 
 ## Quickstart
 
