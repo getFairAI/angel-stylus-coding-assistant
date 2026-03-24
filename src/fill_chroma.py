@@ -177,18 +177,16 @@ def fill_chroma():
     # Init client
     chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 
-    # Reset collection (safe to ignore if it doesn't exist)
-    try:
-        chroma_client.delete_collection(COLLECTION_NAME)
-        print(f"[info] Deleted existing collection '{COLLECTION_NAME}'")
-    except Exception:
-        print(f"[info] No existing collection '{COLLECTION_NAME}' to delete")
-
-    # Recreate collection
+    # Reuse the same collection to avoid breaking long-lived readers.
     collection = chroma_client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=DefaultEmbeddingFunction(),
     )
+    try:
+        collection.delete(where={})
+        print(f"[info] Cleared existing documents in '{COLLECTION_NAME}'")
+    except Exception as e:
+        print(f"[warn] Could not clear '{COLLECTION_NAME}': {e}")
 
     json_files_path = discover_json_files(DATA_DIR)
     print(f"[info] Found {len(json_files_path)} JSON files in {DATA_DIR}")
