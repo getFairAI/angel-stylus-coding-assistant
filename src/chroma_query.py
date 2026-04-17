@@ -1,7 +1,11 @@
+import logging
 import os
+import time
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
+
+logger = logging.getLogger(__name__)
 
 CHROMA_RESULTS = 25
 CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
@@ -18,24 +22,34 @@ def _get_collection():
     )
 
 
+def _query_collection(prompt):
+    collection = _get_collection()
+    return collection.query(
+        query_texts=[prompt],
+        n_results=CHROMA_RESULTS,
+        include=["documents", "metadatas", "distances"],
+    )
+
+
 def get_chroma_documents(prompt):
     try:
-        collection = _get_collection()
-        results = collection.query(
-            query_texts=[prompt],
-            n_results=CHROMA_RESULTS,
-            include=["documents", "metadatas", "distances"],
+        results = _query_collection(prompt)
+    except Exception as exc:
+        # Chroma 1.x shares a process-wide server singleton; if a collection UUID
+        # rotates (migration, external delete), cached handles throw NotFoundError.
+        # Sleep briefly to let the server refresh, then retry with a fresh handle.
+        logger.warning(
+            "chroma_query first attempt failed (%s: %s); retrying",
+            type(exc).__name__, exc,
         )
-    except Exception:
-        # If the collection was dropped mid-run, rehydrate once and retry.
+        time.sleep(0.25)
         try:
-            collection = _get_collection()
-            results = collection.query(
-                query_texts=[prompt],
-                n_results=CHROMA_RESULTS,
-                include=["documents", "metadatas", "distances"],
+            results = _query_collection(prompt)
+        except Exception as exc2:
+            logger.error(
+                "chroma_query retry failed (%s: %s); returning empty hits",
+                type(exc2).__name__, exc2,
             )
-        except Exception:
             return []
     documents = results.get("documents", [[]])[0]
     metadatas = results.get("metadatas", [[]])[0]

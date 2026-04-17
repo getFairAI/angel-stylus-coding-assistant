@@ -183,8 +183,10 @@ def fill_chroma():
         embedding_function=DefaultEmbeddingFunction(),
     )
     try:
-        collection.delete(where={})
-        print(f"[info] Cleared existing documents in '{COLLECTION_NAME}'")
+        existing_ids = collection.get()["ids"]
+        if existing_ids:
+            collection.delete(ids=existing_ids)
+        print(f"[info] Cleared {len(existing_ids)} existing documents in '{COLLECTION_NAME}'")
     except Exception as e:
         print(f"[warn] Could not clear '{COLLECTION_NAME}': {e}")
 

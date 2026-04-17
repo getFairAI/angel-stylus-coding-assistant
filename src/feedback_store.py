@@ -14,6 +14,7 @@ feedback submissions never break the API flow.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -21,6 +22,9 @@ from typing import Dict, List, Optional
 
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------
 # File logging
@@ -56,7 +60,11 @@ def _get_feedback_collection():
             name=FEEDBACK_COLLECTION,
             embedding_function=DefaultEmbeddingFunction(),
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "feedback collection unavailable (%s: %s)",
+            type(exc).__name__, exc,
+        )
         # Returning None keeps API resilient even if Chroma is unavailable.
         return None
 
@@ -186,7 +194,11 @@ def get_feedback_documents(prompt: str, n_results: int = 5) -> List[Dict]:
             n_results=n_results,
             include=["documents", "metadatas", "distances"],
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "feedback query failed (%s: %s)",
+            type(exc).__name__, exc,
+        )
         return []
 
     documents = results.get("documents", [[]])[0]
@@ -226,7 +238,11 @@ def get_conversation_documents(prompt: str, n_results: int = 3, session_id: Opti
             where=filters,
             include=["documents", "metadatas", "distances"],
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "conversation query failed (%s: %s)",
+            type(exc).__name__, exc,
+        )
         return []
 
     documents = results.get("documents", [[]])[0]
