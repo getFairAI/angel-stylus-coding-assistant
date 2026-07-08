@@ -233,9 +233,13 @@ This runs:
 | Service | Role |
 | --- | --- |
 | `chroma` | Standalone Chroma vector store (shared by API + ingestion) |
-| `ollama` | Embeddings backend; pulls `mxbai-embed-large` on first boot |
 | `stylus-backend` | The FastAPI retrieval API (port 8001) |
 | `ingestion` | Scheduled ingestion — runs on start, then every `INGEST_INTERVAL_SECONDS` |
+
+**ollama runs on the host, not in compose.** Ensure it listens on all interfaces
+(`OLLAMA_HOST=0.0.0.0:11434` in its service) and the model is pulled
+(`ollama pull mxbai-embed-large`). The containers reach it via
+`host.docker.internal` (wired with `extra_hosts`); override with `OLLAMA_HOST` if needed.
 
 ```bash
 docker network create stylus-dev-net 2>/dev/null || true
@@ -244,8 +248,9 @@ docker compose up -d --build
 
 Because Chroma runs as its own server, the `ingestion` container's writes are
 **immediately visible to the live API** — no restart, no per-process cache staleness.
-On first boot allow time for ollama to pull the embedding model and for the initial
-ingestion run to complete before the corpus is populated.
+On first boot the initial ingestion run must complete before the corpus is populated
+(the API returns `found:false` until then). Ensure the host ollama has the embedding
+model pulled beforehand.
 
 Stop:
 

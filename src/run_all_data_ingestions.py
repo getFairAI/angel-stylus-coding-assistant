@@ -26,42 +26,44 @@ def run_step(name, fn):
 def run_all(force_refresh: bool = False):
     """Run every ingestion job in order, then rebuild the Chroma index.
 
-    Each step is isolated by ``run_step`` so one failure won't abort the run.
+    Each job is imported and executed inside its own ``run_step`` so an import
+    failure (e.g. an optional dependency like playwright for the course/Saturdays
+    scrapers) fails only that step instead of aborting the whole pipeline.
     Exposed as a callable so the scheduler (and tests) can invoke it directly
     without going through argparse.
     """
+    import importlib
+
     write_ingestion_log("====================================")
     write_ingestion_log("Stylus ingestion pipeline started")
     write_ingestion_log("====================================")
 
-    # Import inside the function to avoid import-time crashes
-    from ingestion.data_blog_ingestion import ingest_stylus_blog
-    from ingestion.data_github_ingestion import ingest_github_readmes
-    from ingestion.data_documentation_ingestion import ingest_stylus_docs
-    from ingestion.data_github_issues_ingestion import ingest_github_issues
-    from ingestion.data_stylus_framework_ingestion import ingest_stylus_framework
-    from ingestion.data_awesome_stylus_code_ingestion import ingest_awesome_stylus_code
-    from ingestion.data_stylus_versions_ingestion import ingest_stylus_versions
-    from ingestion.data_stylus_course_ingestion import ingest_stylus_course
-    from ingestion.data_openzeppelin_stylus_ingestion import ingest_openzeppelin_stylus_docs
+    # (step label, module, callable) — every job takes force_refresh.
+    jobs = [
+        ("Stylus Blog", "ingestion.data_blog_ingestion", "ingest_stylus_blog"),
+        ("GitHub READMEs", "ingestion.data_github_ingestion", "ingest_github_readmes"),
+        ("Github Issues & Comments", "ingestion.data_github_issues_ingestion", "ingest_github_issues"),
+        ("Stylus Documentation", "ingestion.data_documentation_ingestion", "ingest_stylus_docs"),
+        ("LearnWeb3 Stylus Course", "ingestion.data_stylus_course_ingestion", "ingest_stylus_course"),
+        ("OZ Stylus Docs", "ingestion.data_openzeppelin_stylus_ingestion", "ingest_openzeppelin_stylus_docs"),
+        ("Stylus Versions (changelog + PRs)", "ingestion.data_stylus_versions_ingestion", "ingest_stylus_versions"),
+        ("Stylus Framework Code", "ingestion.data_stylus_framework_ingestion", "ingest_stylus_framework"),
+        ("Awesome Stylus Community Code", "ingestion.data_awesome_stylus_code_ingestion", "ingest_awesome_stylus_code"),
+        ("Stylus Saturdays", "ingestion.data_stylus_saturdays_ingestion", "scrape_all"),
+    ]
+
+    def make_step(module_path: str, fn_name: str):
+        # Import lazily at call time so a missing optional dependency only fails
+        # this step, not the whole run_all import.
+        def run():
+            module = importlib.import_module(module_path)
+            getattr(module, fn_name)(force_refresh=force_refresh)
+        return run
+
+    for label, module_path, fn_name in jobs:
+        run_step(label, make_step(module_path, fn_name))
+
     from fill_chroma import fill_chroma
-
-    def run_stylus_saturdays():
-        # Imported lazily: this job depends on playwright (not a core
-        # requirement). A missing dependency fails only this step, not the run.
-        from ingestion.data_stylus_saturdays_ingestion import scrape_all
-        scrape_all(force_refresh=force_refresh)
-
-    run_step("Stylus Blog", lambda: ingest_stylus_blog(force_refresh=force_refresh))
-    run_step("GitHub READMEs", lambda: ingest_github_readmes(force_refresh=force_refresh))
-    run_step("Github Issues & Comments", lambda: ingest_github_issues(force_refresh=force_refresh))
-    run_step("Stylus Documentation", lambda: ingest_stylus_docs(force_refresh=force_refresh))
-    run_step("LearnWeb3 Stylus Course", lambda: ingest_stylus_course(force_refresh=force_refresh))
-    run_step("OZ Stylus Docs", lambda: ingest_openzeppelin_stylus_docs(force_refresh=force_refresh))
-    run_step("Stylus Versions (changelog + PRs)", lambda: ingest_stylus_versions(force_refresh=force_refresh))
-    run_step("Stylus Framework Code", lambda: ingest_stylus_framework(force_refresh=force_refresh))
-    run_step("Awesome Stylus Community Code", lambda: ingest_awesome_stylus_code(force_refresh=force_refresh))
-    run_step("Stylus Saturdays", run_stylus_saturdays)
     run_step("Chroma Index Rebuild", fill_chroma)
 
     write_ingestion_log("====================================")

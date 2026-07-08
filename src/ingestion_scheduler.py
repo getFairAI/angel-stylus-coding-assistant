@@ -22,6 +22,7 @@ import logging
 import os
 import time
 
+from embeddings import get_chroma_client
 from run_all_data_ingestions import run_all
 
 logging.basicConfig(
@@ -29,6 +30,26 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger("ingestion_scheduler")
+
+
+def wait_for_chroma(timeout_seconds: int = 120, poll_seconds: int = 3) -> bool:
+    """Block until the Chroma server answers a heartbeat, or timeout.
+
+    Dependents only wait for Chroma to *start* (its image has no healthcheck), so
+    poll here before the first ingestion run to avoid failing on a not-yet-ready
+    server. Returns True if Chroma became reachable.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            get_chroma_client().heartbeat()
+            logger.info("Chroma is reachable")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Waiting for Chroma to be ready (%s)", type(exc).__name__)
+            time.sleep(poll_seconds)
+    logger.warning("Chroma not reachable after %ss; proceeding anyway", timeout_seconds)
+    return False
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -65,6 +86,8 @@ def main() -> None:
         "Ingestion scheduler up (interval=%ss, run_on_start=%s)",
         interval, run_on_start,
     )
+
+    wait_for_chroma()
 
     if run_on_start:
         run_once()

@@ -9,6 +9,10 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
+# Chromium + OS deps for the playwright-based ingestion jobs (Stylus course,
+# Stylus Saturdays). --with-deps installs the required apt libraries.
+RUN playwright install --with-deps chromium
+
 COPY src ./src
 # `data/` is gitignored and provided at runtime via a bind mount (see
 # docker-compose.yml), so it is not COPYed here — a clean checkout has no data/
