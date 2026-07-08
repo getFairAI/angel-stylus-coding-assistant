@@ -9,8 +9,15 @@ source .venv/bin/activate
 python src/run_all_data_ingestions.py
 ```
 
+In Docker this runs automatically: the `ingestion` service (`src/ingestion_scheduler.py`)
+executes the pipeline on start and then every `INGEST_INTERVAL_SECONDS`, writing to the shared
+Chroma server. No systemd timer/cron needed. Trigger an extra run with
+`docker compose exec ingestion python src/run_all_data_ingestions.py`.
+
 - Writes progress to `logs/ingestion_logs.log`.
-- Rebuilds Chroma at the end via `src/fill_chroma.py`, clearing and re-adding the `stylus_chat_data` collection.
+- Refreshes Chroma at the end via `src/fill_chroma.py`. Chunk ids are content-derived, so it
+  **upserts only new/changed chunks and deletes removed ones** — the `stylus_chat_data` collection
+  is never emptied and the live API keeps serving during a rebuild.
 
 ## Pipelines at a glance
 
@@ -28,6 +35,7 @@ Each job saves JSON under `data/` (created on first run) and appends run details
 | `data_stylus_framework_ingestion.py` | Stylus framework code snippets | `data/stylus_framework_code.json` |
 | `data_stylus_saturdays_ingestion.py` | Stylus Saturdays articles | `data/stylus_saturdays.json` |
 | `data_awesome_stylus_code_ingestion.py` | Code files referenced from the Awesome Stylus list | `data/awesome_stylus_code.json` |
+| `data_stylus_saturdays_ingestion.py` | Stylus Saturdays articles (requires `playwright`) | `data/stylus_saturdays.json` |
 
 ## Incremental behavior
 
@@ -51,7 +59,13 @@ If data JSON already exists and you just want to refresh the vector store:
 python src/fill_chroma.py
 ```
 
-It deletes the existing `stylus_chat_data` collection in `./chroma_db` and re-adds chunked documents.
+It reconciles the `stylus_chat_data` collection in `./chroma_db` against `data/`: chunks are split
+(`CHUNK_MAX_CHARS`/`CHUNK_OVERLAP`), assigned content-derived ids, and **upserted** — only new/changed
+chunks are embedded, stale ids are deleted, and unchanged chunks are left untouched. Requires the
+ollama embeddings backend (`OLLAMA_HOST` / `EMBEDDING_MODEL`).
+
+The Stylus Saturdays job additionally needs `playwright` (`pip install playwright && playwright
+install chromium`); it is wired into the orchestrator but a missing dependency fails only that step.
 
 ## Troubleshooting
 

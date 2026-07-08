@@ -1,38 +1,22 @@
+import hashlib
 import json
+import logging
 import os
 from typing import Dict, List
-import chromadb
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-from chromadb import Documents, EmbeddingFunction, Embeddings
-import ollama
-from concurrent.futures import ThreadPoolExecutor
-import re
 import numpy as np
 import uuid
 
+from embeddings import get_chroma_client, get_or_reset_collection
 
-DATA_DIR = "data"
-CHROMA_PATH = "./chroma_db"
+
+logger = logging.getLogger(__name__)
+
+DATA_DIR = os.getenv("DATA_DIR", "data")
 COLLECTION_NAME = "stylus_chat_data"
 BATCH_SIZE = 64
-MAX_CHARS = 800
-OVERLAP = 100
+MAX_CHARS = int(os.getenv("CHUNK_MAX_CHARS", "800"))
+OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
 SEPARATORS = ["\n\n", "\n", ". ", "; ", " ", ""]
-
-
-class OllamaEmbeddingFunction(EmbeddingFunction):
-    def __call__(self, input: Documents) -> Embeddings:
-
-        def embed(text):
-            return ollama.embeddings(
-                model="mxbai-embed-large",
-                prompt=text
-            )["embedding"]
-
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            embeddings = list(executor.map(embed, input))
-
-        return embeddings
 
 # ----------------------------------------------------
 # Helpers
@@ -170,36 +154,52 @@ def semantic_group_chunks(
     return final_chunks
 
 
-# ----------------------------------------------------
-# MAIN FUNCTION (callable)
-# ----------------------------------------------------
-def fill_chroma():
-    # Init client
-    chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+def apply_overlap(units: List[Dict], overlap: int) -> List[Dict]:
+    """Prepend the tail of the previous unit to each unit for recall across
+    chunk boundaries. Overlap is taken from the *original* previous text so it
+    does not compound as chunks are stitched."""
+    if overlap <= 0 or len(units) <= 1:
+        return units
 
-    # Reuse the same collection to avoid breaking long-lived readers.
-    collection = chroma_client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=DefaultEmbeddingFunction(),
-    )
-    try:
-        existing_ids = collection.get()["ids"]
-        if existing_ids:
-            collection.delete(ids=existing_ids)
-        print(f"[info] Cleared {len(existing_ids)} existing documents in '{COLLECTION_NAME}'")
-    except Exception as e:
-        print(f"[warn] Could not clear '{COLLECTION_NAME}': {e}")
+    overlapped = []
+    prev_text = ""
+    for unit in units:
+        text = unit["text"]
+        if prev_text:
+            tail = prev_text[-overlap:]
+            text = f"{tail} {text}".strip()
+        overlapped.append({"text": text, "meta": unit["meta"]})
+        prev_text = unit["text"]
+    return overlapped
 
-    json_files_path = discover_json_files(DATA_DIR)
-    print(f"[info] Found {len(json_files_path)} JSON files in {DATA_DIR}")
 
-    # json_files_path = [ "data/github_issues_sectioned.json"]
-    documents_batch = []
-    metadatas_batch = []
-    ids_batch = []
+def _source_key(metadata: Dict) -> str:
+    """Stable identity for the source item (independent of run-time uuids), used
+    so chunk ids stay constant across rebuilds and unchanged content is not
+    re-embedded."""
+    for key in ("url", "repo_url", "source_url", "id"):
+        value = metadata.get(key)
+        if value:
+            return str(value)
+    parts = [
+        str(metadata.get(k, ""))
+        for k in ("source", "repo", "title", "section", "subsection")
+    ]
+    return "|".join(p for p in parts if p)
 
-    doc_counter = 0
 
+def stable_chunk_id(source_key: str, index: int, text: str) -> str:
+    """Content-derived, deterministic id. Same (source, position, text) => same
+    id, enabling idempotent upsert and stale-id garbage collection."""
+    digest = hashlib.sha256(
+        f"{source_key}|{index}|{text}".encode("utf-8")
+    ).hexdigest()
+    return f"doc_{digest[:32]}"
+
+
+def _build_chunk_records(json_files_path: List[str]) -> Dict[str, Dict]:
+    """Return {chunk_id: {"document","metadata"}} for the entire corpus."""
+    records: Dict[str, Dict] = {}
     for file_path in json_files_path:
         print(f"[info] Indexing {file_path}")
         data = load_json_data(file_path)
@@ -207,65 +207,79 @@ def fill_chroma():
         for item in data:
             text = item.get("text", "")
             base_metadata = item.get("metadata", {})
+            source_key = _source_key(base_metadata)
 
-            # 1) Recursively split into small units
             units = recursive_chunk(text, MAX_CHARS)
-
-            # Step 2: semantic grouping
-            #semantic_chunks = semantic_group_chunks(
-            #      units,
-            #    embed_fn=lambda texts: OllamaEmbeddingFunction()(texts),
-            #    similarity_threshold=0.85
-            #)
-
-            #print(f"[info] Formed {len(semantic_chunks)} semantic chunks")
-
-            # chunks = chunk_text(text, max_chars=2000)
+            units = apply_overlap(units, OVERLAP)
 
             for idx, unit in enumerate(units):
                 chunk_text = unit["text"]
                 unit_meta = unit["meta"].copy()
 
-                if len(chunk_text) > MAX_CHARS:
+                if len(chunk_text) > MAX_CHARS + OVERLAP:
                     print("⚠ Oversized chunk:", len(chunk_text))
 
-                # Build final metadata by merging
                 chunk_metadata = {**base_metadata, **unit_meta}
                 chunk_metadata["chunk_index"] = idx
                 chunk_metadata["chunk_total"] = len(units)
 
-                doc_id = f"doc_{doc_counter}"
-                doc_counter += 1
+                doc_id = stable_chunk_id(source_key, idx, chunk_text)
+                # Last write wins on a genuine id collision (identical content).
+                records[doc_id] = {
+                    "document": chunk_text,
+                    "metadata": chunk_metadata,
+                }
+    return records
 
-                documents_batch.append(chunk_text)
-                metadatas_batch.append(chunk_metadata)
-                ids_batch.append(doc_id)
 
-                if len(documents_batch) >= BATCH_SIZE:
-                    collection.add(
-                        documents=documents_batch,
-                        metadatas=metadatas_batch,
-                        ids=ids_batch
-                    )
+# ----------------------------------------------------
+# MAIN FUNCTION (callable)
+# ----------------------------------------------------
+def fill_chroma():
+    client = get_chroma_client()
+    collection = get_or_reset_collection(
+        client, COLLECTION_NAME, reset_on_conflict=True
+    )
 
-                    print(f"[batch] Added {len(documents_batch)} docs")
+    json_files_path = discover_json_files(DATA_DIR)
+    print(f"[info] Found {len(json_files_path)} JSON files in {DATA_DIR}")
 
-                    documents_batch = []
-                    metadatas_batch = []
-                    ids_batch = []
+    records = _build_chunk_records(json_files_path)
+    new_ids = set(records.keys())
 
-    # Flush remaining docs
-    if documents_batch:
-        collection.add(
-            documents=documents_batch,
-            metadatas=metadatas_batch,
-            ids=ids_batch
+    try:
+        existing_ids = set(collection.get()["ids"])
+    except Exception as e:
+        logger.warning("Could not read existing ids from '%s': %s", COLLECTION_NAME, e)
+        existing_ids = set()
+
+    # Only embed/write chunks that are new or changed; leave unchanged chunks in
+    # place. The collection is never emptied, so live readers keep serving
+    # results throughout the rebuild.
+    to_upsert = [doc_id for doc_id in new_ids if doc_id not in existing_ids]
+    to_delete = [doc_id for doc_id in existing_ids if doc_id not in new_ids]
+
+    for start in range(0, len(to_upsert), BATCH_SIZE):
+        batch = to_upsert[start:start + BATCH_SIZE]
+        collection.upsert(
+            documents=[records[i]["document"] for i in batch],
+            metadatas=[records[i]["metadata"] for i in batch],
+            ids=batch,
         )
-        print(f"[batch] Added final {len(documents_batch)} docs")
+        print(f"[batch] Upserted {len(batch)} docs")
+
+    for start in range(0, len(to_delete), BATCH_SIZE):
+        batch = to_delete[start:start + BATCH_SIZE]
+        collection.delete(ids=batch)
+    if to_delete:
+        print(f"[info] Removed {len(to_delete)} stale docs")
 
     print(
-        f"[✔] Successfully added {doc_counter} documents to the '{COLLECTION_NAME}' collection")
-    return doc_counter
+        f"[✔] Corpus '{COLLECTION_NAME}': {len(new_ids)} chunks "
+        f"({len(to_upsert)} new/changed, {len(to_delete)} removed, "
+        f"{len(new_ids) - len(to_upsert)} unchanged)"
+    )
+    return len(to_upsert)
 
 
 # ----------------------------------------------------

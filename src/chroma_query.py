@@ -1,24 +1,36 @@
 import logging
 import os
 import time
-import chromadb
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+from embeddings import CHROMA_SPACE, get_chroma_client, get_embedding_function
 
 
 logger = logging.getLogger(__name__)
 
 CHROMA_RESULTS = 25
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
 COLLECTION_NAME = "stylus_chat_data"
-embedding_fn = DefaultEmbeddingFunction()
+
+# Cosine distance cutoff (0 = identical, 2 = opposite). Hits farther than this
+# are treated as irrelevant so the API can honestly report `found: false`
+# instead of returning 25 loosely-related chunks. None disables the filter.
+def _max_distance():
+    raw = os.getenv("CHROMA_MAX_DISTANCE", "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid CHROMA_MAX_DISTANCE=%r; ignoring", raw)
+        return None
 
 
 def _get_collection():
     """Return a fresh collection handle each time to survive ingestion rebuilds."""
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client = get_chroma_client()
     return client.get_or_create_collection(
         name=COLLECTION_NAME,
-        embedding_function=embedding_fn,
+        embedding_function=get_embedding_function(),
+        metadata={"hnsw:space": CHROMA_SPACE},
     )
 
 
@@ -55,14 +67,29 @@ def get_chroma_documents(prompt):
     metadatas = results.get("metadatas", [[]])[0]
     distances = results.get("distances", [[]])[0]
 
+    max_distance = _max_distance()
     hits = []
+    dropped = 0
     for idx, doc in enumerate(documents):
+        distance = distances[idx] if idx < len(distances) else None
+        if (
+            max_distance is not None
+            and distance is not None
+            and distance > max_distance
+        ):
+            dropped += 1
+            continue
         hits.append(
             {
                 "text": doc,
                 "metadata": (metadatas[idx] if idx < len(metadatas) else {}) or {},
-                "distance": distances[idx] if idx < len(distances) else None,
+                "distance": distance,
             }
+        )
+    if dropped:
+        logger.info(
+            "chroma_query dropped %d/%d hits above max_distance=%.3f",
+            dropped, len(documents), max_distance,
         )
     return hits
     
