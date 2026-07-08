@@ -57,30 +57,51 @@ def fetch_text(url: str) -> Optional[str]:
         return None
 
 
+# Matches "Keep a Changelog" version headings, e.g.:
+#   ## [0.10.8](https://.../v0.10.8) - 2026-07-06
+#   ## [v1.2.3] - 2025-01-01
+#   ## v1.2.3
+#   ## Version 1.2.3
+# NOTE: this is a raw string, so single backslashes are correct regex escapes.
+# (A previous double-escaped version matched nothing, so no version chunks were
+# ever indexed — "what is the latest SDK version?" had nothing to retrieve.)
+VERSION_HEADING_PATTERN = re.compile(
+    r"^##\s*\[?(?:version\s*)?v?(\d+\.\d+\.\d+[^\s\]]*)", re.IGNORECASE
+)
+RELEASE_DATE_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+
+def _version_sort_key(version: str):
+    """Numeric key so 0.10.8 > 0.9.0 regardless of changelog ordering."""
+    return tuple(int(n) for n in re.findall(r"\d+", version.split("-")[0]))
+
+
 def parse_changelog(changelog_text: str) -> List[Dict]:
     """
-    Split CHANGELOG sections by version headings and emit entries.
-    Accepts headings like:
-      ## [v1.2.3] - 2025-01-01
-      ## v1.2.3
-      ## Version 1.2.3
+    Split CHANGELOG sections by version headings and emit entries, plus a single
+    synthesized "latest release" summary chunk that directly answers version
+    questions ("what is the current/latest Stylus SDK version?").
     """
     entries: List[Dict] = []
     now_iso = datetime.utcnow().isoformat() + "Z"
-    pattern = re.compile(r"^##\\s*(?:\\[?version\\s*)?v?(\\d+\\.\\d+\\.\\d+[^\\s\\]]*)", re.IGNORECASE)
 
     lines = changelog_text.splitlines()
     current_version = None
+    current_date = None
     buffer: List[str] = []
+    seen: List[tuple] = []  # (version, date) in file order
 
     def flush():
-        nonlocal buffer, current_version
+        nonlocal buffer, current_version, current_date
         if current_version and buffer:
             body = "\n".join(buffer).strip()
+            version_line = f"Version: {current_version}"
+            if current_date:
+                version_line += f" (released {current_date})"
             header = [
                 "Source: Stylus SDK CHANGELOG",
                 f"Repo: {REPO}",
-                f"Version: {current_version}",
+                version_line,
                 f"URL: {CHANGELOG_URL}",
             ]
             entries.append(
@@ -90,6 +111,7 @@ def parse_changelog(changelog_text: str) -> List[Dict]:
                         "source": "stylus_changelog",
                         "repo": REPO,
                         "version": current_version,
+                        "released_at": current_date,
                         "url": CHANGELOG_URL,
                         "type": "changelog",
                         "ingested_at": now_iso,
@@ -99,15 +121,58 @@ def parse_changelog(changelog_text: str) -> List[Dict]:
         buffer = []
 
     for line in lines:
-        match = pattern.match(line.strip())
+        stripped = line.strip()
+        match = VERSION_HEADING_PATTERN.match(stripped)
         if match:
             flush()
             current_version = match.group(1)
+            date_match = RELEASE_DATE_PATTERN.search(stripped)
+            current_date = date_match.group(1) if date_match else None
+            seen.append((current_version, current_date))
         else:
             buffer.append(line)
 
     flush()
-    write_ingestion_log(f"[ok] Parsed {len(entries)} changelog versions")
+
+    if seen:
+        # Newest by semantic version, not by file position, so "latest" is correct
+        # even if the changelog is ordered oldest-first.
+        ordered = sorted(seen, key=lambda vd: _version_sort_key(vd[0]), reverse=True)
+        latest_version, latest_date = ordered[0]
+        recent = ", ".join(f"v{v}" for v, _ in ordered[:8])
+        summary = (
+            f"The latest Arbitrum Stylus Rust SDK (stylus-sdk-rs) release is "
+            f"v{latest_version}"
+            + (f", released {latest_date}." if latest_date else ".")
+            + f" Recent versions, newest first: {recent}."
+        )
+        header = [
+            "Source: Stylus SDK CHANGELOG",
+            f"Repo: {REPO}",
+            "Topic: latest stylus-sdk-rs version / current SDK release",
+            f"URL: {CHANGELOG_URL}",
+        ]
+        entries.insert(
+            0,
+            {
+                "text": "\n\n".join(["\n".join(header), summary]),
+                "metadata": {
+                    # No `version`/`number` key on purpose: the incremental merge key
+                    # is (type, version or number), so leaving them unset keeps a
+                    # single stable "latest" entry that is updated in place rather
+                    # than accumulating a stale summary per release.
+                    "source": "stylus_changelog",
+                    "repo": REPO,
+                    "latest_version": latest_version,
+                    "released_at": latest_date,
+                    "url": CHANGELOG_URL,
+                    "type": "changelog_latest",
+                    "ingested_at": now_iso,
+                },
+            },
+        )
+
+    write_ingestion_log(f"[ok] Parsed {len(entries)} changelog entries (incl. latest summary)")
     return entries
 
 

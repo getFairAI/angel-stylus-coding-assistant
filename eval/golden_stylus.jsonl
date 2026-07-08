@@ -29,4 +29,6 @@
 {"id": "debugging-tx", "question": "How do I debug a failing Stylus transaction?", "skill": "research", "expect_found": true, "expect_source_contains": ["debug"]}
 {"id": "how-it-works", "question": "How does Stylus work under the hood and how does it interoperate with the EVM?", "skill": "research", "expect_found": true, "expect_source_contains": ["stylus"]}
 {"id": "recommended-libs", "question": "What are the recommended libraries for building Stylus contracts?", "skill": "research", "expect_found": true, "expect_source_contains": ["librar"]}
+{"id": "latest-sdk-version", "question": "What is the latest stylus-sdk-rs version?", "skill": "research", "expect_found": true, "expect_source_contains": ["version"]}
+{"id": "current-sdk-version", "question": "Which version of the Stylus Rust SDK is current?", "skill": "research", "expect_found": true, "expect_source_contains": ["version"]}
 {"id": "off-topic-solana", "question": "How do I write a Solana program in Anchor and deploy it to mainnet-beta?", "skill": "research", "expect_found": false, "expect_source_contains": []}
