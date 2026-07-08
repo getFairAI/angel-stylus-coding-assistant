@@ -1,4 +1,55 @@
 services:
+  # Standalone Chroma vector store. Both the API and the ingestion scheduler
+  # connect to this one server, so ingestion's writes are immediately visible to
+  # the live API (no restart / no per-process cache staleness).
+  chroma:
+    image: chromadb/chroma:${CHROMA_IMAGE_TAG:-1.5.9}
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma-data:/data
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=2).status==200 else sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+    networks:
+      stylus-dev-net:
+        aliases:
+          - chroma
+    restart: unless-stopped
+
+  # Embeddings backend. Pulls the model on first boot, then serves.
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-mxbai-embed-large}
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "ollama serve & sleep 3 &&
+       ollama pull ${EMBEDDING_MODEL:-mxbai-embed-large} &&
+       wait"
+    # Healthy only once the embedding model is actually pulled, so dependents
+    # don't start embedding before it is ready.
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -q \"${EMBEDDING_MODEL:-mxbai-embed-large}\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 30
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      stylus-dev-net:
+        aliases:
+          - ollama
+    restart: unless-stopped
+
   stylus-backend:
     build:
       context: .
@@ -8,17 +59,60 @@ services:
       PORT: 8001
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-mxbai-embed-large}
+      CHROMA_SERVER_HOST: ${CHROMA_SERVER_HOST:-chroma}
+      CHROMA_SERVER_PORT: ${CHROMA_SERVER_PORT:-8000}
+      CHROMA_MAX_DISTANCE: ${CHROMA_MAX_DISTANCE:-0.6}
+    depends_on:
+      chroma:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
     ports:
       - "${BACKEND_PORT:-8001}:8001"
     volumes:
-      - ./chroma_db:/app/chroma_db
       - ./logs:/app/logs
-      - ./data:/app/data:ro
     networks:
       stylus-dev-net:
         aliases:
           - stylus-backend
     restart: unless-stopped
+
+  # Scheduled ingestion — replaces the systemd timer/cron. Runs the pipeline on
+  # start (configurable) and then every INGEST_INTERVAL_SECONDS. Shares the same
+  # image as the backend.
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "src/ingestion_scheduler.py"]
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-mxbai-embed-large}
+      CHROMA_SERVER_HOST: ${CHROMA_SERVER_HOST:-chroma}
+      CHROMA_SERVER_PORT: ${CHROMA_SERVER_PORT:-8000}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      INGEST_INTERVAL_SECONDS: ${INGEST_INTERVAL_SECONDS:-86400}
+      RUN_ON_START: ${RUN_ON_START:-true}
+      INGEST_FORCE_REFRESH: ${INGEST_FORCE_REFRESH:-false}
+    depends_on:
+      chroma:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      stylus-dev-net:
+        aliases:
+          - ingestion
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  chroma-data:
 
 networks:
   stylus-dev-net:

@@ -7,7 +7,9 @@ requests>=2.31.0
 beautifulsoup4>=4.12.3
 
 # --- Vector database ---
-chromadb>=0.5.0
+# Pin to 1.5.x: 0.x→1.x had breaking API changes (delete(where={}) now rejected,
+# stricter UUID handling). Upgrading beyond 1.5 needs retesting.
+chromadb>=1.5.1,<1.6.0
 
 # --- Embeddings / LLM runtime ---
 ollama>=0.1.8

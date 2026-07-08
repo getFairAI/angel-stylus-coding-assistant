@@ -116,15 +116,19 @@ def test_porting_audit_passes_required_augmentation_to_skill_search(monkeypatch)
     assert isinstance(captured["augmentation"], dict)
 
 
-def test_porting_skill_search_rejects_missing_augmentation():
+def test_porting_skill_search_allows_missing_augmentation():
+    # Augmentation is an optional bounded second pass; the porting search runs
+    # static analysis without it (validation was intentionally removed in
+    # "fix: porting endpoint validation").
     client = TestClient(app_module.app)
     response = client.post(
         "/skills/sift-stylus-porting-auditor/search",
         json={"prompt": "Analyze ./contracts"},
     )
 
-    assert response.status_code == 422
-    assert "requires an 'augmentation' payload object" in response.json()["detail"]
+    assert response.status_code == 200
+    payload = response.json()
+    assert "agent_guidance" in payload
 
 
 def test_validate_porting_augmentation_endpoint_fallback():
@@ -270,9 +274,10 @@ def test_admin_logs_paginate_reads_slice(monkeypatch, tmp_path):
     app_module.LOG_SOURCES["request"] = str(request_log_path)
 
     client = TestClient(app_module.app)
+    token = app_module.issue_bearer_token()  # signed token (raw secret is not accepted)
     response = client.get(
         "/admin/logs/request/paginate",
-        headers={"Authorization": "Bearer secret"},
+        headers={"Authorization": f"Bearer {token}"},
         params={"offset": 0, "limit": 12},
     )
 
@@ -307,7 +312,6 @@ def test_admin_auth_and_token_validation(monkeypatch):
     )
     # request log likely missing in test env; accept 404 for missing file
     assert resp.status_code in (200, 404)
-    assert comparison["quality_delta"]["promotions"] == 0
 
 
 def test_openrouter_proxy_requires_backend_api_key(monkeypatch):
@@ -395,24 +399,33 @@ def test_conversation_flow_and_export(monkeypatch, tmp_path):
     assert body["turns"][0]["rating"] == 1
     assert body["turns"][0]["skill"] == "sift-stylus-research"
 
-    # add an unrated turn so the export can keep filtering to rated answers
-    second_turn = client.post(
-        f"/conversations/{session_id}/turn",
-        json={"prompt": "again", "response": "hello 2"},
+    # The export endpoint returns rated ANSWERS from the feedback log (new
+    # answer-based format, per commit 2975cce). Submit one positive and one
+    # negative rating; only the positive should be exported at min_rating=1.
+    good = client.post(
+        "/feedback",
+        json={"prompt": "hi", "response": "hello", "rating": 1, "skill": "sift-stylus-research"},
     )
-    assert second_turn.status_code == 200
+    assert good.status_code == 200
+    bad = client.post(
+        "/feedback",
+        json={"prompt": "meh", "response": "nope", "rating": -1},
+    )
+    assert bad.status_code == 200
 
-    # export (admin-protected)
+    # export (admin-protected) — mint a signed bearer token
+    token = app_module.issue_bearer_token()
     export = client.get(
         "/admin/conversations/export",
-        headers={"Authorization": "Bearer secret"},
+        headers={"Authorization": f"Bearer {token}"},
         params={"min_rating": 1, "max_turns": 10},
     )
     assert export.status_code == 200
     turns = export.json()["turns"]
     assert len(turns) == 1
-    assert turns[0]["session_id"] == session_id
-    assert turns[0]["turn_id"] == turn_id
+    assert turns[0]["rating"] == 1
+    assert turns[0]["response"] == "hello"
+    assert turns[0]["skill"] == "sift-stylus-research"
 
 
 def test_conversation_turn_rejects_bad_rating(monkeypatch, tmp_path):

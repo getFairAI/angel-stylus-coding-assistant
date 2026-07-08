@@ -14,13 +14,16 @@ feedback submissions never break the API flow.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
 from typing import Dict, List, Optional
 
-import chromadb
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+from embeddings import get_chroma_client, get_or_reset_collection
+
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------
 # File logging
@@ -45,18 +48,22 @@ def _write_feedback_event(event: Dict) -> None:
 # -----------------------------
 # Chroma storage (best-effort)
 # -----------------------------
-CHROMA_PATH = "./chroma_db"
 FEEDBACK_COLLECTION = "stylus_feedback"
 
 
 def _get_feedback_collection():
     try:
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
-        return client.get_or_create_collection(
-            name=FEEDBACK_COLLECTION,
-            embedding_function=DefaultEmbeddingFunction(),
+        client = get_chroma_client()
+        # reset_on_conflict handles the one-time migration off legacy default
+        # embeddings; without it the collection would stay unreadable forever.
+        return get_or_reset_collection(
+            client, FEEDBACK_COLLECTION, reset_on_conflict=True
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "feedback collection unavailable (%s: %s)",
+            type(exc).__name__, exc,
+        )
         # Returning None keeps API resilient even if Chroma is unavailable.
         return None
 
@@ -78,13 +85,18 @@ def _index_document_if_positive(
 
     doc = f"Prompt: {prompt}\n\nAssistant response:\n{response}"
     try:
-        collection.add(
+        # Upsert keeps re-rated turns idempotent (same doc_id) instead of
+        # duplicating them across submissions.
+        collection.upsert(
             documents=[doc],
             metadatas=[metadata or {}],
             ids=[doc_id or str(uuid.uuid4())],
         )
-    except Exception:
-        # best-effort
+    except Exception as exc:  # best-effort; never break the API flow
+        logger.warning(
+            "feedback indexing failed (%s: %s)",
+            type(exc).__name__, exc,
+        )
         return None
     return True
 
@@ -186,7 +198,11 @@ def get_feedback_documents(prompt: str, n_results: int = 5) -> List[Dict]:
             n_results=n_results,
             include=["documents", "metadatas", "distances"],
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "feedback query failed (%s: %s)",
+            type(exc).__name__, exc,
+        )
         return []
 
     documents = results.get("documents", [[]])[0]
@@ -215,9 +231,16 @@ def get_conversation_documents(prompt: str, n_results: int = 3, session_id: Opti
     if collection is None:
         return []
 
-    filters = {"source": "conversation"}
+    # Chroma requires a single top-level operator; combine multiple fields with $and.
     if session_id:
-        filters["session_id"] = session_id
+        filters = {
+            "$and": [
+                {"source": "conversation"},
+                {"session_id": session_id},
+            ]
+        }
+    else:
+        filters = {"source": "conversation"}
 
     try:
         results = collection.query(
@@ -226,7 +249,11 @@ def get_conversation_documents(prompt: str, n_results: int = 3, session_id: Opti
             where=filters,
             include=["documents", "metadatas", "distances"],
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "conversation query failed (%s: %s)",
+            type(exc).__name__, exc,
+        )
         return []
 
     documents = results.get("documents", [[]])[0]

@@ -48,7 +48,26 @@ from skill_registry import (
     run_skill_search,
 )
 
+import logging
+
+from embeddings import check_ollama_ready
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
+
+
+@app.on_event("startup")
+def _check_embeddings_backend() -> None:
+    """Probe the embedding backend at boot so misconfiguration surfaces as a
+    clear log line instead of an opaque failure on the first search."""
+    ok, message = check_ollama_ready()
+    if ok:
+        logger.info("Embedding backend ready: %s", message)
+    else:
+        logger.warning("Embedding backend NOT ready: %s", message)
+
+
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 ADMIN_TOKEN_ENV_KEY = "ADMIN_BEARER_TOKEN"
 ADMIN_HASHED_PASSWORD_ENV_KEY = "ADMIN_HASHED_PASSWORD"
@@ -239,6 +258,7 @@ class ConversationExportResponse(BaseModel):
     turns: List[RatedTurnExport]
 class FeedbackResponse(BaseModel):
     feedback_id: str
+    stored: bool = False
 
 
 class PlatformFeedbackPayload(BaseModel):

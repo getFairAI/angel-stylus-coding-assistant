@@ -10,8 +10,10 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY src ./src
-COPY data ./data
-RUN mkdir -p /app/chroma_db /app/logs
+# `data/` is gitignored and provided at runtime via a bind mount (see
+# docker-compose.yml), so it is not COPYed here — a clean checkout has no data/
+# dir and COPY would fail the build. Just ensure the mount points exist.
+RUN mkdir -p /app/chroma_db /app/logs /app/data
 
 EXPOSE 8001
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stylus Code Helper"
+  short_description: "Generate source-backed Stylus code snippets using MCP retrieval"
+  default_prompt: "Use $stylus-code-helper to retrieve relevant Stylus context from the hosted MCP backend and return a references-first answer with small, practical, source-backed code snippets, brief explanations, adaptation notes, and direct source links. Clearly label any illustrative (non-retrieved) fragments. Use the response quality_signals: if confidence=low or found=false, do not fabricate APIs or flags — say what is missing and give only conservative guidance; if time_sensitive is true, verify snippets against the latest release/changelog and cite as_of_date; prefer sources with higher official_count/canonical_count in evidence_profile."
