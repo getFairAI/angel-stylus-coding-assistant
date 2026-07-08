@@ -72,6 +72,13 @@ Example queries:
 - `context`
 - `references`
 - `agent_guidance`
+- `quality_signals` (`confidence`, `time_sensitive`, `evidence_profile`)
+- `as_of_date`
+
+Calibrate to `quality_signals`:
+- `confidence=low` → do not fabricate APIs/flags; label snippets illustrative and note what is missing.
+- `time_sensitive=true` → verify against the latest release/changelog and cite `as_of_date`.
+- Prefer sources with higher `evidence_profile.official_count` / `canonical_count`.
 
 ---
 

@@ -23,13 +23,18 @@ Do not use this skill for non-Stylus topics.
 
 ## Required workflow
 1. Call `search_stylus_docs` with the user's question (or a refined technical query).
-2. Read `found`, `context`, `references`, and `agent_guidance` from the response.
+2. Read `found`, `context`, `references`, `agent_guidance`, and `quality_signals` from the response.
 3. If `found=false`, state that no relevant retrieval context was found and provide only conservative guidance.
 4. If `found=true`, answer with references-first structure:
 - Short answer.
 - Key retrieved points.
 - Direct links from `references`.
 5. Respect `code_generation=disallowed` unless the user explicitly overrides this constraint.
+6. Calibrate to `quality_signals`:
+- `confidence=low` → state the uncertainty explicitly and offer a clearly-labeled best-bet.
+- `time_sensitive=true` → warn that results may be outdated and cite `as_of_date`.
+- Prefer sources with higher `evidence_profile.official_count` / `canonical_count`.
+- You may use `recommended_answer_outline` as a scaffold (fill `direct_answer`, keep `why`/`links`/`caveats`).
 
 ## Output style
 - Start with a concise direct answer.

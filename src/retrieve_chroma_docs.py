@@ -1,6 +1,7 @@
 from chroma_query import get_chroma_documents
 from feedback_store import get_feedback_documents, get_conversation_documents
 from copy import deepcopy
+from urllib.parse import urlparse
 import re
 from typing import Optional
 
@@ -729,6 +730,155 @@ def build_references_markdown(references, max_items=12):
     return "\n".join(lines)
 
 
+OFFICIAL_SOURCES = {"documentation", "derived_docs_root"}
+CANONICAL_SOURCES = {"canonical", "porting_canonical"}
+OFFICIAL_DOMAINS = {"docs.arbitrum.io", "arbitrum.io", "docs.openzeppelin.com"}
+TIME_SENSITIVE_HINTS = (
+    "latest", "newest", "recent", "current", "version", "changelog",
+    "release", "update", "deprecated", "roadmap", "upcoming",
+)
+
+
+def _url_domain(url: str) -> str:
+    try:
+        return (urlparse(url).netloc or "").lower().lstrip("www.")
+    except Exception:
+        return ""
+
+
+def classify_source_type(ref_or_meta: dict) -> str:
+    """Map a reference/hit to official | canonical | community."""
+    source = (ref_or_meta.get("source") or "").lower()
+    if source in CANONICAL_SOURCES:
+        return "canonical"
+    if source in OFFICIAL_SOURCES:
+        return "official"
+    domain = _url_domain(ref_or_meta.get("url") or ref_or_meta.get("repo_url") or "")
+    if domain in OFFICIAL_DOMAINS:
+        return "official"
+    return "community"
+
+
+def is_time_sensitive(user_prompt: str, prefs: dict) -> bool:
+    if prefs.get("prefer_news") or prefs.get("prefer_projects"):
+        return True
+    lowered = user_prompt.lower()
+    return any(hint in lowered for hint in TIME_SENSITIVE_HINTS)
+
+
+def _latest_ingested_at(ranked_hits) -> Optional[str]:
+    values = []
+    for hit in ranked_hits:
+        meta = hit.get("metadata") or {}
+        val = meta.get("ingested_at")
+        if val:
+            values.append(str(val))
+    return max(values) if values else None
+
+
+def build_quality_signals(ranked_hits, references, user_prompt: str, prefs: dict) -> dict:
+    """Derive downstream-agent guidance signals from retrieved evidence.
+
+    Fills the `quality_signals` / `answer_contract` / `recommended_answer_outline`
+    contract documented in the README so consumers can calibrate confidence,
+    surface uncertainty, and prefer authoritative sources.
+    """
+    # Evidence profile from the references (deduped, allow-listed URLs).
+    official_count = community_count = canonical_count = 0
+    domains = set()
+    for ref in references:
+        stype = classify_source_type(ref)
+        if stype == "official":
+            official_count += 1
+        elif stype == "canonical":
+            canonical_count += 1
+        else:
+            community_count += 1
+        domain = _url_domain(ref.get("url") or "")
+        if domain:
+            domains.add(domain)
+
+    evidence_profile = {
+        "official_count": official_count,
+        "community_count": community_count,
+        "canonical_count": canonical_count,
+        "unique_domains": len(domains),
+    }
+
+    # Confidence from best semantic distance + evidence breadth. Distances are
+    # cosine (0 = identical, 2 = opposite); smaller is better. Authoritativeness
+    # is judged from the *retrieved hits* — not the canonical references, which
+    # are always injected as generic fallbacks and would otherwise inflate it.
+    distances = [
+        hit.get("distance") for hit in ranked_hits
+        if isinstance(hit.get("distance"), (int, float))
+    ]
+    best_distance = min(distances) if distances else None
+    authoritative = sum(
+        1 for hit in ranked_hits
+        if classify_source_type(hit.get("metadata") or {}) in ("official", "canonical")
+    )
+    if best_distance is not None and best_distance <= 0.35 and authoritative >= 1:
+        confidence = "high"
+    elif best_distance is not None and best_distance >= 0.6 and authoritative == 0:
+        confidence = "low"
+    elif len(ranked_hits) <= 2 and authoritative == 0:
+        confidence = "low"
+    else:
+        confidence = "medium"
+
+    time_sensitive = is_time_sensitive(user_prompt, prefs)
+
+    quality_signals = {
+        "confidence": confidence,
+        "time_sensitive": time_sensitive,
+        "evidence_profile": evidence_profile,
+    }
+
+    answer_contract = {
+        "format": "direct_answer_why_links",
+        "length_target_lines": "10-20",
+        "uncertainty_mode": "state_uncertainty_plus_best_bet",
+        "audience": "builder_engineer",
+    }
+
+    why = []
+    for hit in ranked_hits[:3]:
+        meta = hit.get("metadata") or {}
+        label = meta.get("title") or meta.get("section") or meta.get("repo")
+        if label and label not in why:
+            why.append(str(label))
+
+    links = [
+        {
+            "title": ref.get("title") or "Reference",
+            "url": ref.get("url"),
+            "source_type": classify_source_type(ref),
+        }
+        for ref in references[:5]
+    ]
+
+    caveats = []
+    if confidence == "low":
+        caveats.append("Retrieved evidence is thin or weakly matched; verify before relying on it.")
+    if time_sensitive:
+        caveats.append("Topic is time-sensitive; confirm against the latest release/changelog.")
+
+    recommended_answer_outline = {
+        "direct_answer": "",
+        "why": why,
+        "links": links,
+        "caveats": caveats,
+    }
+
+    return {
+        "quality_signals": quality_signals,
+        "answer_contract": answer_contract,
+        "recommended_answer_outline": recommended_answer_outline,
+        "as_of_date": _latest_ingested_at(ranked_hits),
+    }
+
+
 def retrieve_stylus_context(
     user_prompt: str,
     max_chars: int = 10000,
@@ -823,6 +973,8 @@ def retrieve_stylus_context(
     if ref_header:
         context = f"{ref_header}\n\n{context}"
 
+    quality = build_quality_signals(ranked_hits, references, user_prompt, prefs)
+
     return {
         "found": True,
         "context": context,
@@ -831,6 +983,10 @@ def retrieve_stylus_context(
         "agent_guidance": agent_guidance_payload,
         "references": references,
         "references_markdown": references_markdown,
+        "quality_signals": quality["quality_signals"],
+        "answer_contract": quality["answer_contract"],
+        "recommended_answer_outline": quality["recommended_answer_outline"],
+        "as_of_date": quality["as_of_date"],
     }
 
 

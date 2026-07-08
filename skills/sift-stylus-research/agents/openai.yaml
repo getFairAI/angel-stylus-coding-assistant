@@ -1,4 +1,4 @@
 interface:
   display_name: "Sift Stylus Research"
   short_description: "Research Stylus topics with MCP-backed references"
-  default_prompt: "Use $sift-stylus-research to answer this Stylus question from the hosted MCP retrieval backend and return references-first findings."
+  default_prompt: "Use $sift-stylus-research to answer this Stylus question from the hosted MCP retrieval backend. Return a references-first answer: a short direct answer, key retrieved points, then a References section of source links. Respect agent_guidance (code_generation=disallowed) unless the user explicitly overrides it. Calibrate to the response quality_signals: if confidence=low, state the uncertainty and give a clearly-labeled best-bet; if time_sensitive is true, warn results may be outdated and cite as_of_date; prefer sources with higher official_count/canonical_count in evidence_profile. If found=false, say no retrieval context was found and answer only conservatively."
