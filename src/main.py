@@ -54,18 +54,30 @@ from embeddings import check_ollama_ready
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+from contextlib import asynccontextmanager
+
+from mcp_server import mcp_app
 
 
-@app.on_event("startup")
-def _check_embeddings_backend() -> None:
-    """Probe the embedding backend at boot so misconfiguration surfaces as a
-    clear log line instead of an opaque failure on the first search."""
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Compose the boot embedding-backend probe with the MCP session manager's
+    lifespan (required so the mounted /mcp Streamable HTTP app works)."""
     ok, message = check_ollama_ready()
     if ok:
         logger.info("Embedding backend ready: %s", message)
     else:
         logger.warning("Embedding backend NOT ready: %s", message)
+    async with mcp_app.lifespan(app):
+        yield
+
+
+app = FastAPI(lifespan=_lifespan)
+
+# Standard MCP surface (Streamable HTTP). Exposes search_stylus_docs /
+# search_stylus_code / stylus_porting_audit at <base>/mcp for MCP hosts, reusing the
+# same retrieval as the REST /skills/{id}/search endpoints. Public (no auth) for now.
+app.mount("/mcp", mcp_app)
 
 
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"

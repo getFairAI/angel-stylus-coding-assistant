@@ -13,28 +13,40 @@ project scaffolding.
 | Skills | `skills/sift-stylus-*/SKILL.md` | research, code-helper, porting-auditor, verify, scaffold, deploy, review |
 | Command | `commands/stylus-init.md` | `/stylus-init` — project conventions + toolchain + size profile |
 | Hook | `hooks/hooks.json` → `scripts/stylus-check-hook.sh` | PostToolUse `cargo check` on `.rs` edits |
-| MCP | `.mcp.json` | remote retrieval server exposing `search_stylus_docs` / `search_stylus_code` |
+| MCP | `.mcp.json` → backend `/mcp` (`src/mcp_server.py`) | tools: `search_stylus_docs`, `search_stylus_code`, `stylus_porting_audit` |
 | Template | `assets/stylus-project-template/` | CLAUDE.md, `rust-toolchain.toml`, release profile |
 
 The three retrieval-oriented skills (research, code-helper, porting-auditor) call the
 hosted MCP server; verify/scaffold/deploy/review run locally in the user's repo.
 
-## Configure the MCP server
+## The MCP server
 
-The retrieval MCP is a hosted server managed by your team (not started by the plugin).
-Set its URL (and token, if the server requires auth) before use:
+The MCP surface is served by the backend itself (`src/mcp_server.py`, mounted at
+`/mcp` via FastMCP Streamable HTTP in `main.py`), reusing the same
+`skill_registry.run_skill_search` as the REST `/skills/{id}/search` endpoints. It
+exposes three tools: `search_stylus_docs`, `search_stylus_code`, and
+`stylus_porting_audit`. **Public — no auth** for now.
+
+`.mcp.json` points at `${SIFT_MCP_URL:-https://sifter.azule.xyz/mcp}`; override
+`SIFT_MCP_URL` to target another deployment:
 
 ```bash
-export SIFT_MCP_URL="https://<your-hosted-mcp>/mcp"   # defaults to sifter.azule.xyz/mcp
-export SIFT_MCP_TOKEN="<token>"                        # only if the server requires auth
+export SIFT_MCP_URL="https://<your-backend>/mcp"
 ```
 
-`.mcp.json` expands these at connect time. If your server needs no auth, remove the
-`Authorization` header from `.mcp.json`.
+To add auth later: add a FastMCP auth provider in `src/mcp_server.py` and restore an
+`Authorization: Bearer ${SIFT_MCP_TOKEN}` header in `.mcp.json`.
 
-> Open item: confirm the hosted MCP exposes a **porting-audit tool** (the backend's
-> static-analysis endpoint), not only the two search tools — the `sift-stylus-porting-auditor`
-> skill depends on it.
+**Deployment note:** the reverse proxy fronting the backend must forward `/mcp` with
+response buffering disabled (e.g. nginx `proxy_buffering off;`) so the Streamable HTTP
+transport can stream. Verify with an MCP `initialize` handshake:
+
+```bash
+curl -sS -X POST https://<base>/mcp/ \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'
+# expect HTTP 200 (not 404)
+```
 
 ## Install / test locally
 

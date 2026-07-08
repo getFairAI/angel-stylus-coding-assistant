@@ -19,6 +19,10 @@ chromadb>=1.5.1,<1.6.0
 # --- Embeddings / LLM runtime ---
 ollama>=0.1.8
 
+# --- MCP server (Streamable HTTP) ---
+# Exposes retrieval as standard MCP tools at /mcp for external agent hosts.
+fastmcp>=3.4.0,<4.0.0
+
 # --- Utilities ---
 pydantic>=2.6.0
 python-dateutil>=2.9.0
