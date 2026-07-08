@@ -259,14 +259,37 @@ def fill_chroma():
     to_upsert = [doc_id for doc_id in new_ids if doc_id not in existing_ids]
     to_delete = [doc_id for doc_id in existing_ids if doc_id not in new_ids]
 
+    def _upsert(ids: List[str]) -> None:
+        collection.upsert(
+            documents=[records[i]["document"] for i in ids],
+            metadatas=[records[i]["metadata"] for i in ids],
+            ids=ids,
+        )
+
+    dropped = 0
     for start in range(0, len(to_upsert), BATCH_SIZE):
         batch = to_upsert[start:start + BATCH_SIZE]
-        collection.upsert(
-            documents=[records[i]["document"] for i in batch],
-            metadatas=[records[i]["metadata"] for i in batch],
-            ids=batch,
-        )
-        print(f"[batch] Upserted {len(batch)} docs")
+        try:
+            _upsert(batch)
+            print(f"[batch] Upserted {len(batch)} docs")
+        except Exception as batch_exc:  # noqa: BLE001
+            # A single poison doc (or a transient embedding/Chroma error) must
+            # not abort the whole rebuild and leave every later batch unindexed.
+            # Retry the batch one doc at a time so only the offending docs drop.
+            logger.warning(
+                "Batch upsert failed (%s); retrying %d docs individually",
+                batch_exc, len(batch),
+            )
+            for doc_id in batch:
+                try:
+                    _upsert([doc_id])
+                except Exception as doc_exc:  # noqa: BLE001
+                    dropped += 1
+                    logger.error(
+                        "Dropping doc %s from index: %s", doc_id, doc_exc
+                    )
+    if dropped:
+        print(f"[warn] Dropped {dropped} docs that could not be embedded/indexed")
 
     for start in range(0, len(to_delete), BATCH_SIZE):
         batch = to_delete[start:start + BATCH_SIZE]
@@ -276,10 +299,10 @@ def fill_chroma():
 
     print(
         f"[✔] Corpus '{COLLECTION_NAME}': {len(new_ids)} chunks "
-        f"({len(to_upsert)} new/changed, {len(to_delete)} removed, "
-        f"{len(new_ids) - len(to_upsert)} unchanged)"
+        f"({len(to_upsert) - dropped} new/changed, {len(to_delete)} removed, "
+        f"{len(new_ids) - len(to_upsert)} unchanged, {dropped} dropped)"
     )
-    return len(to_upsert)
+    return len(to_upsert) - dropped
 
 
 # ----------------------------------------------------

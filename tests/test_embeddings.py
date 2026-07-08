@@ -39,9 +39,9 @@ def test_embedding_function_call_uses_ollama_client(monkeypatch):
         def __init__(self, host):
             self.host = host
 
-        def embeddings(self, model, prompt):
-            calls.append((model, prompt))
-            return {"embedding": [0.1, 0.2, 0.3]}
+        def embed(self, model, input, truncate=None):
+            calls.append((model, input))
+            return {"embeddings": [[0.1, 0.2, 0.3]]}
 
     monkeypatch.setattr(embeddings.ollama, "Client", FakeClient)
     fn = embeddings.OllamaEmbeddingFunction(model="m", host="http://h")

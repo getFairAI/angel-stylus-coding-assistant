@@ -103,7 +103,13 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         model = self.model
 
         def embed(text: str):
-            return client.embeddings(model=model, prompt=text)["embedding"]
+            # truncate=True tells Ollama to clip an input that exceeds the
+            # model's context window (mxbai-embed-large caps at 512 tokens)
+            # instead of returning a 500 that aborts the whole ingestion run.
+            # Uses the /api/embed endpoint; the legacy embeddings()/prompt call
+            # does not honor truncate on Ollama 0.15.x.
+            resp = client.embed(model=model, input=text, truncate=True)
+            return resp["embeddings"][0]
 
         with ThreadPoolExecutor(max_workers=_EMBED_WORKERS) as executor:
             return list(executor.map(embed, list(input)))
