@@ -4,6 +4,7 @@ source = src
 omit =
     src/data_*ingestion.py
     src/run_all_data_ingestions.py
+    src/ingestion_scheduler.py
     src/fill_chroma.py
     src/debug_chroma_query.py
 
