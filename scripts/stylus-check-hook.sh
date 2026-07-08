@@ -24,20 +24,47 @@ set -uo pipefail
 
 [ "${STYLUS_HOOK_DISABLE:-}" = "1" ] && exit 0
 
-payload="$(cat)"
+# Read the payload once into a temp file — apply_patch diffs can be large, so avoid
+# passing it through argv/env.
+payload_file="$(mktemp 2>/dev/null || echo "/tmp/stylus-hook.$$")"
+trap 'rm -f "$payload_file"' EXIT
+cat > "$payload_file"
 
-# --- extract the edited file path from the hook payload (jq, then python3) ------
-extract_file_path() {
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_input.filePath // empty' 2>/dev/null
-  elif command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$payload" | python3 -c \
-      'import sys,json;d=json.load(sys.stdin);t=d.get("tool_input",{});print(t.get("file_path") or t.get("filePath") or "")' \
-      2>/dev/null
-  fi
-}
+# --- extract the edited .rs file path, tolerant of multiple host payload shapes --
+# Claude Code: tool_input.file_path (absolute).
+# Codex:       apply_patch — paths embedded in tool_input.command, relative to cwd.
+# python3 handles both; jq is a fallback for the simple Claude Code shape only.
+PY_EXTRACT='
+import sys, os, json, re
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+ti = d.get("tool_input") or {}
+cwd = d.get("cwd") or ""
+cands = []
+fp = ti.get("file_path") or ti.get("filePath")
+if fp:
+    cands.append(fp)
+cmd = ti.get("command")
+if isinstance(cmd, str) and "*** " in cmd:
+    cands += re.findall(r"\*\*\*\s+(?:Add|Update|Delete)\s+File:\s+(.+)", cmd)
+    cands += re.findall(r"\*\*\*\s+Move to:\s+(.+)", cmd)
+for c in cands:
+    c = c.strip()
+    p = c if os.path.isabs(c) else (os.path.join(cwd, c) if cwd else c)
+    if p.endswith(".rs"):
+        print(os.path.normpath(p))
+        break
+'
 
-file_path="$(extract_file_path)"
+file_path=""
+if command -v python3 >/dev/null 2>&1; then
+  file_path="$(python3 -c "$PY_EXTRACT" < "$payload_file" 2>/dev/null)"
+elif command -v jq >/dev/null 2>&1; then
+  file_path="$(jq -r '.tool_input.file_path // .tool_input.filePath // empty' < "$payload_file" 2>/dev/null)"
+fi
+
 [ -z "$file_path" ] && exit 0
 case "$file_path" in
   *.rs) ;;
