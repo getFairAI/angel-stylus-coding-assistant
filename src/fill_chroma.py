@@ -216,7 +216,10 @@ def _build_chunk_records(json_files_path: List[str]) -> Dict[str, Dict]:
                 chunk_text = unit["text"]
                 unit_meta = unit["meta"].copy()
 
-                if len(chunk_text) > MAX_CHARS + OVERLAP:
+                # apply_overlap legitimately prepends up to OVERLAP chars + 1 join
+                # space, so MAX_CHARS + OVERLAP + 1 is the expected ceiling; only warn
+                # above it (a genuinely over-long chunk).
+                if len(chunk_text) > MAX_CHARS + OVERLAP + 1:
                     print("⚠ Oversized chunk:", len(chunk_text))
 
                 chunk_metadata = {**base_metadata, **unit_meta}

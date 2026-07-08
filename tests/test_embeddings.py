@@ -39,8 +39,8 @@ def test_embedding_function_call_uses_ollama_client(monkeypatch):
         def __init__(self, host):
             self.host = host
 
-        def embed(self, model, input, truncate=None):
-            calls.append((model, input))
+        def embed(self, model, input, truncate=None, options=None, keep_alive=None):
+            calls.append((model, input, truncate, options))
             return {"embeddings": [[0.1, 0.2, 0.3]]}
 
     monkeypatch.setattr(embeddings.ollama, "Client", FakeClient)
@@ -51,6 +51,60 @@ def test_embedding_function_call_uses_ollama_client(monkeypatch):
     assert all(list(map(float, row)) == pytest.approx([0.1, 0.2, 0.3], abs=1e-6) for row in out)
     assert {c[1] for c in calls} == {"a", "b"}
     assert all(c[0] == "m" for c in calls)
+    # truncate + num_ctx pinned to the model window so over-long inputs don't 400
+    assert all(c[2] is True for c in calls)
+    assert all(c[3] == {"num_ctx": embeddings.DEFAULT_EMBED_NUM_CTX} for c in calls)
+
+
+def test_is_length_error_classification():
+    assert embeddings._is_length_error(Exception("input length exceeds the context length"))
+    assert embeddings._is_length_error(Exception("the input exceeds context length (400)"))
+    assert not embeddings._is_length_error(Exception("connection refused"))
+
+
+def test_embed_num_ctx_env_override(monkeypatch):
+    monkeypatch.delenv("EMBED_NUM_CTX", raising=False)
+    assert embeddings.get_embed_num_ctx() == embeddings.DEFAULT_EMBED_NUM_CTX
+    monkeypatch.setenv("EMBED_NUM_CTX", "256")
+    assert embeddings.get_embed_num_ctx() == 256
+    monkeypatch.setenv("EMBED_NUM_CTX", "not-a-number")
+    assert embeddings.get_embed_num_ctx() == embeddings.DEFAULT_EMBED_NUM_CTX
+
+
+def test_embed_falls_back_to_truncated_head_on_length_error(monkeypatch):
+    """A chunk that 400s on length must be embedded (head), never dropped."""
+    seen = []
+
+    class LengthyClient:
+        def __init__(self, host):
+            pass
+
+        def embed(self, model, input, truncate=None, options=None, keep_alive=None):
+            seen.append(len(input))
+            if len(input) > 1000:  # simulate Ollama rejecting long inputs even with truncate
+                raise Exception("the input length exceeds the context length (status code: 400)")
+            return {"embeddings": [[0.5, 0.5]]}
+
+    monkeypatch.setattr(embeddings.ollama, "Client", LengthyClient)
+    fn = embeddings.OllamaEmbeddingFunction(model="m", host="http://h")
+    out = fn(["x" * 5000])  # far over the (simulated) limit
+    assert len(out) == 1
+    assert list(map(float, out[0])) == pytest.approx([0.5, 0.5])
+    assert min(seen) <= 1000  # it retried with a shorter head and succeeded
+
+
+def test_embed_reraises_non_length_errors(monkeypatch):
+    class BrokenClient:
+        def __init__(self, host):
+            pass
+
+        def embed(self, model, input, truncate=None, options=None, keep_alive=None):
+            raise Exception("connection refused")
+
+    monkeypatch.setattr(embeddings.ollama, "Client", BrokenClient)
+    fn = embeddings.OllamaEmbeddingFunction(model="m", host="http://h")
+    with pytest.raises(Exception, match="connection refused"):
+        fn(["short text"])
 
 
 def test_check_ollama_ready_paths(monkeypatch):

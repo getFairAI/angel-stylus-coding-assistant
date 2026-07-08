@@ -47,9 +47,34 @@ FINGERPRINT_KEY = "embedding_space"
 
 _EMBED_WORKERS = 8
 
+# mxbai-embed-large caps at 512 tokens. Passing only truncate=True makes Ollama clip
+# to num_ctx, whose default is larger than 512, so a mid-size input (e.g. ~900 chars
+# of dense code that tokenizes past 512) still returns 400 "input length exceeds the
+# context length" and the chunk gets dropped from the index. Pin num_ctx to the
+# model's real window so truncation happens at the right limit. Override for other
+# models via EMBED_NUM_CTX.
+DEFAULT_EMBED_NUM_CTX = 512
+
+# Defensive fallback: some Ollama builds still 400 on length even with truncate. Retry
+# with progressively shorter heads so a long chunk is embedded (its head) rather than
+# dropped entirely.
+_FALLBACK_CHAR_BUDGETS = (6000, 3000, 1500, 800, 400)
+
 
 def get_embedding_model() -> str:
     return os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+
+
+def get_embed_num_ctx() -> int:
+    try:
+        return int(os.getenv("EMBED_NUM_CTX", str(DEFAULT_EMBED_NUM_CTX)))
+    except ValueError:
+        return DEFAULT_EMBED_NUM_CTX
+
+
+def _is_length_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "context length" in text or "input length" in text
 
 
 def get_ollama_host() -> str:
@@ -101,15 +126,39 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
     def __call__(self, input: Documents) -> Embeddings:
         client = ollama.Client(host=self.host)
         model = self.model
+        num_ctx = get_embed_num_ctx()
+
+        def _embed_once(text: str):
+            # truncate=True + num_ctx pinned to the model's window: Ollama clips an
+            # over-long input at the right limit instead of 400-ing on length. Uses
+            # /api/embed (the legacy embeddings()/prompt call ignores truncate).
+            resp = client.embed(
+                model=model, input=text, truncate=True, options={"num_ctx": num_ctx}
+            )
+            return resp["embeddings"][0]
 
         def embed(text: str):
-            # truncate=True tells Ollama to clip an input that exceeds the
-            # model's context window (mxbai-embed-large caps at 512 tokens)
-            # instead of returning a 500 that aborts the whole ingestion run.
-            # Uses the /api/embed endpoint; the legacy embeddings()/prompt call
-            # does not honor truncate on Ollama 0.15.x.
-            resp = client.embed(model=model, input=text, truncate=True)
-            return resp["embeddings"][0]
+            try:
+                return _embed_once(text)
+            except Exception as exc:  # noqa: BLE001
+                if not _is_length_error(exc):
+                    raise
+                # Some Ollama builds don't truncate reliably; retry with a shorter
+                # head so the chunk is indexed rather than dropped from the corpus.
+                for budget in _FALLBACK_CHAR_BUDGETS:
+                    if budget >= len(text):
+                        continue
+                    try:
+                        vec = _embed_once(text[:budget])
+                        logger.warning(
+                            "Embedded truncated head (%d/%d chars) after length error",
+                            budget, len(text),
+                        )
+                        return vec
+                    except Exception as inner:  # noqa: BLE001
+                        if not _is_length_error(inner):
+                            raise
+                raise
 
         with ThreadPoolExecutor(max_workers=_EMBED_WORKERS) as executor:
             return list(executor.map(embed, list(input)))
