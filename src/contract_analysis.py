@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,8 @@ import tempfile
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
+
+logger = logging.getLogger(__name__)
 
 GITHUB_URL_RE = re.compile(r"(?:https?://)?(?:www\.)?github\.com/[^\s)>\]`]+", re.IGNORECASE)
 LOCAL_PATH_RE = re.compile(
@@ -668,6 +671,14 @@ def analyze_contract_target(user_prompt: str) -> Optional[Dict[str, object]]:
         try:
             return _analyze_github_target(github_target)
         except Exception:
+            # Silent None here previously masked deploy issues (missing `git`
+            # binary, absent extractor script) as "no analysis". Log so the
+            # cause is visible instead of degrading quietly to generic retrieval.
+            logger.warning(
+                "Porting analysis failed for GitHub target %s",
+                github_target.get("source_url") or github_target,
+                exc_info=True,
+            )
             return None
 
     local_target = _extract_local_target_from_prompt(prompt)
@@ -675,6 +686,11 @@ def analyze_contract_target(user_prompt: str) -> Optional[Dict[str, object]]:
         try:
             return _analyze_local_target(local_target)
         except Exception:
+            logger.warning(
+                "Porting analysis failed for local target %s",
+                local_target,
+                exc_info=True,
+            )
             return None
 
     return None

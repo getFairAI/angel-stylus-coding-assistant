@@ -6,6 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# git is required at runtime by the Porting Auditor: it clones target repos
+# (src/contract_analysis.py) to run static Solidity signal extraction.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
@@ -14,6 +19,9 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN playwright install --with-deps chromium
 
 COPY src ./src
+# skills/ holds the Porting Auditor's extractor script, referenced at runtime by
+# src/contract_analysis.py (EXTRACTOR_SCRIPT). It must be present in the image.
+COPY skills ./skills
 # `data/` is gitignored and provided at runtime via a bind mount (see
 # docker-compose.yml), so it is not COPYed here — a clean checkout has no data/
 # dir and COPY would fail the build. Just ensure the mount points exist.
