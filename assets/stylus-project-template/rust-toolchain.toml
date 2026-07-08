@@ -1,0 +1,5 @@
+# Pinned toolchain for reproducible Stylus builds.
+# Match `channel` to the Rust version your installed stylus-sdk supports.
+[toolchain]
+channel = "1.83"
+targets = ["wasm32-unknown-unknown"]

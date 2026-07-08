@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "sift-stylus",
+  "displayName": "Sift Stylus",
+  "version": "0.1.0",
+  "description": "Best-in-class Arbitrum Stylus development: source-grounded research, code help, porting audits, a local cargo stylus verify loop, and correct-by-default project scaffolding.",
+  "author": {
+    "name": "getFairAI",
+    "url": "https://github.com/getFairAI"
+  },
+  "homepage": "https://github.com/getFairAI/angel-stylus-coding-assistant",
+  "repository": "https://github.com/getFairAI/angel-stylus-coding-assistant",
+  "license": "MIT",
+  "keywords": ["arbitrum", "stylus", "rust", "smart-contracts", "web3"]
+}
