@@ -38,7 +38,10 @@ services:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-mxbai-embed-large}
       CHROMA_SERVER_HOST: ${CHROMA_SERVER_HOST:-chroma}
-      CHROMA_SERVER_PORT: ${CHROMA_SERVER_PORT:-8000}
+      # chroma's INTERNAL container port is always 8000. CHROMA_PORT only changes
+      # the host-published port, not what other containers connect to — do not
+      # set this to the published port.
+      CHROMA_SERVER_PORT: "8000"
       CHROMA_MAX_DISTANCE: ${CHROMA_MAX_DISTANCE:-0.6}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -63,11 +66,18 @@ services:
       context: .
       dockerfile: Dockerfile
     command: ["python", "src/ingestion_scheduler.py"]
+    # This service runs the scheduler, not the API, so the image's /health
+    # HEALTHCHECK does not apply — disable it (otherwise it reports unhealthy).
+    healthcheck:
+      disable: true
     environment:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-mxbai-embed-large}
       CHROMA_SERVER_HOST: ${CHROMA_SERVER_HOST:-chroma}
-      CHROMA_SERVER_PORT: ${CHROMA_SERVER_PORT:-8000}
+      # chroma's INTERNAL container port is always 8000. CHROMA_PORT only changes
+      # the host-published port, not what other containers connect to — do not
+      # set this to the published port.
+      CHROMA_SERVER_PORT: "8000"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       INGEST_INTERVAL_SECONDS: ${INGEST_INTERVAL_SECONDS:-86400}
       RUN_ON_START: ${RUN_ON_START:-true}

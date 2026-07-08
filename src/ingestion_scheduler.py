@@ -46,7 +46,9 @@ def wait_for_chroma(timeout_seconds: int = 120, poll_seconds: int = 3) -> bool:
             logger.info("Chroma is reachable")
             return True
         except Exception as exc:  # noqa: BLE001
-            logger.info("Waiting for Chroma to be ready (%s)", type(exc).__name__)
+            logger.info(
+                "Waiting for Chroma to be ready (%s: %s)", type(exc).__name__, exc
+            )
             time.sleep(poll_seconds)
     logger.warning("Chroma not reachable after %ss; proceeding anyway", timeout_seconds)
     return False
