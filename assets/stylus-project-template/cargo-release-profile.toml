@@ -1,0 +1,8 @@
+# Size-oriented release profile for Stylus contracts (24KB compressed code limit).
+# Merge this [profile.release] block into the project's Cargo.toml.
+[profile.release]
+opt-level = "z"       # optimize for binary size
+lto = true            # link-time optimization
+codegen-units = 1     # better optimization at the cost of compile time
+panic = "abort"       # no unwinding machinery in the binary
+strip = true          # drop symbols

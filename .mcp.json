@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sift-stylus": {
+      "type": "http",
+      "url": "${SIFT_MCP_URL:-https://sifter.azule.xyz/mcp}"
+    }
+  }
+}

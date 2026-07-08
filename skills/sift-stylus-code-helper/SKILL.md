@@ -168,10 +168,10 @@ If relevant, include a short **Testing note** section with how to exercise the s
 ## Backend contract
 
 - Tool name: `search_stylus_code`
-- Backend endpoint: `POST /skills/stylus-code-helper/search`
+- Backend endpoint: `POST /skills/sift-stylus-code-helper/search`
 - Expected deployment: hosted remote MCP/retrieval server managed by your team.
 - Local fallback (debugging only):  
-  `http://localhost:8001/skills/stylus-code-helper/search`
+  `http://localhost:8001/skills/sift-stylus-code-helper/search`
 
 ### Request body
 
