@@ -62,3 +62,7 @@ tmp/
 .coverage
 coverage.xml
 htmlcov/
+
+# Eval harness generated scorecards
+eval/scorecard.json
+eval/compile_scorecard.json

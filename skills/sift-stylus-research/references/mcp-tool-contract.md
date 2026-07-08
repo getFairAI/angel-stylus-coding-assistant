@@ -1,4 +1,4 @@
-# MCP Tool Contract: `stylus_search_code`
+# MCP Tool Contract: `search_stylus_code`
 
 ## Purpose
 Retrieve relevant Arbitrum Stylus documentation context before composing **small, practical Stylus code snippets and examples** (patterns, “how do I implement X” guidance), with **sources-first** behavior and safe adaptation notes.
@@ -6,7 +6,7 @@ Retrieve relevant Arbitrum Stylus documentation context before composing **small
 This contract is intended to support the **stylus-code-helper** skill.
 
 ## Tool name
-`stylus_search_code`
+`search_stylus_code`
 
 ## Input schema
 ```json
@@ -38,7 +38,7 @@ This contract is intended to support the **stylus-code-helper** skill.
 - Default behavior is references-first and snippet-oriented code generation (not full contracts unless explicitly requested).
 
 ## Backend mapping
-- Hosted backend endpoint: `POST /skills/stylus-code-helper/search`
+- Hosted backend endpoint: `POST /skills/sift-stylus-code-helper/search`
 - Request body:
 ```json
 { "prompt": "<query>" }

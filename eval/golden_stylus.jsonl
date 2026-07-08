@@ -1,0 +1,32 @@
+{"id": "storage-trait", "question": "How do I declare persistent storage in a Stylus contract using sol_storage?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["storage"]}
+{"id": "entrypoint", "question": "How do I define the entrypoint for a Stylus Rust contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["entrypoint"]}
+{"id": "events-logs", "question": "How do I emit events and logs from a Stylus contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["event"]}
+{"id": "msg-sender", "question": "How do I access msg::sender and other VM affordances in Stylus?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["sender"]}
+{"id": "call-contract", "question": "How do I call another contract from a Stylus contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["call"]}
+{"id": "abi-encode", "question": "How do I ABI-encode data in a Stylus contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["abi"]}
+{"id": "abi-decode", "question": "How do I ABI-decode calldata in Stylus?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["abi"]}
+{"id": "errors", "question": "How do I define and return custom errors in a Stylus contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["error"]}
+{"id": "inheritance", "question": "How does inheritance and #[borrow] work in the Stylus SDK?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["inherit"]}
+{"id": "mapping", "question": "How do I use a StorageMap / mapping in Stylus storage?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["map"]}
+{"id": "sending-ether", "question": "How do I send ether from a Stylus contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["ether"]}
+{"id": "function-selector", "question": "How do I compute or use a function selector in Stylus?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["selector"]}
+{"id": "hashing", "question": "How do I compute a keccak256 hash inside a Stylus contract?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["hash"]}
+{"id": "primitive-types", "question": "What primitive data types does the Stylus SDK support (U256, Address)?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["type"]}
+{"id": "erc20", "question": "Show me an ERC20 token implementation in Stylus.", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["erc20"]}
+{"id": "erc721", "question": "Show me an ERC721 NFT implementation in Stylus.", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["erc721"]}
+{"id": "vending-machine", "question": "How is the vending machine example structured in Stylus by example?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["vending"]}
+{"id": "multicall", "question": "How do I implement a multi-call pattern in Stylus?", "skill": "code_helper", "expect_found": true, "expect_source_contains": ["call"]}
+{"id": "openzeppelin", "question": "Does OpenZeppelin provide Stylus contract libraries and how do I use them?", "skill": "research", "expect_found": true, "expect_source_contains": ["openzeppelin"]}
+{"id": "cargo-new", "question": "How do I create a new Stylus project with cargo stylus?", "skill": "research", "expect_found": true, "expect_source_contains": ["cargo stylus"]}
+{"id": "cargo-check", "question": "What does cargo stylus check do before deployment?", "skill": "research", "expect_found": true, "expect_source_contains": ["check"]}
+{"id": "deploy", "question": "How do I deploy a Stylus contract with cargo stylus deploy?", "skill": "research", "expect_found": true, "expect_source_contains": ["deploy"]}
+{"id": "activation", "question": "What is contract activation via ArbWasm and why is it required?", "skill": "research", "expect_found": true, "expect_source_contains": ["activat"]}
+{"id": "caching", "question": "How does contract caching work in Stylus and why does it matter for gas?", "skill": "research", "expect_found": true, "expect_source_contains": ["cach"]}
+{"id": "verify-arbiscan", "question": "How do I verify a Stylus contract on Arbiscan?", "skill": "research", "expect_found": true, "expect_source_contains": ["verif"]}
+{"id": "optimize-size", "question": "How do I optimize a Stylus WASM binary to fit the 24KB code size limit?", "skill": "research", "expect_found": true, "expect_source_contains": ["optim"]}
+{"id": "testing", "question": "How do I write and run tests for Stylus contracts?", "skill": "research", "expect_found": true, "expect_source_contains": ["test"]}
+{"id": "gas-metering", "question": "How does gas metering (ink) work for Stylus contracts?", "skill": "research", "expect_found": true, "expect_source_contains": ["gas"]}
+{"id": "debugging-tx", "question": "How do I debug a failing Stylus transaction?", "skill": "research", "expect_found": true, "expect_source_contains": ["debug"]}
+{"id": "how-it-works", "question": "How does Stylus work under the hood and how does it interoperate with the EVM?", "skill": "research", "expect_found": true, "expect_source_contains": ["stylus"]}
+{"id": "recommended-libs", "question": "What are the recommended libraries for building Stylus contracts?", "skill": "research", "expect_found": true, "expect_source_contains": ["librar"]}
+{"id": "off-topic-solana", "question": "How do I write a Solana program in Anchor and deploy it to mainnet-beta?", "skill": "research", "expect_found": false, "expect_source_contains": []}
