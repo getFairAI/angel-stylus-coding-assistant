@@ -43,7 +43,61 @@ def _query_collection(prompt):
     )
 
 
+def _hybrid_enabled():
+    return os.getenv("STYLUS_HYBRID_RETRIEVAL", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def get_chroma_documents(prompt):
+    """Dense retrieval by default; hybrid (dense + BM25) when STYLUS_HYBRID_RETRIEVAL is set.
+
+    Hybrid is opt-in until validated against eval/run_eval.py — flip the default only
+    once the scorecard (found_accuracy / avg_source_recall) improves.
+    """
+    if _hybrid_enabled():
+        return get_hybrid_documents(prompt)
+    return _dense_documents(prompt)
+
+
+def _rrf_fuse(dense, lexical, rrf_k, limit):
+    """Reciprocal Rank Fusion of two ranked hit lists, keyed by document text.
+
+    Dense hits win ties for the retained object (they carry a `distance`); a doc in
+    both lists sums its reciprocal-rank contributions.
+    """
+    fused: dict = {}
+    for rank, hit in enumerate(dense):
+        entry = fused.setdefault(hit["text"], {"hit": hit, "score": 0.0})
+        entry["score"] += 1.0 / (rrf_k + rank + 1)
+    for rank, hit in enumerate(lexical):
+        entry = fused.get(hit["text"])
+        if entry is None:
+            entry = fused.setdefault(hit["text"], {"hit": hit, "score": 0.0})
+        entry["score"] += 1.0 / (rrf_k + rank + 1)
+    ordered = sorted(fused.values(), key=lambda e: e["score"], reverse=True)
+    return [e["hit"] for e in ordered[:limit]]
+
+
+def get_hybrid_documents(prompt, rrf_k=60, limit=CHROMA_RESULTS):
+    """Fuse distance-gated dense hits with BM25 lexical hits via RRF.
+
+    Honesty is preserved: if the dense gate yields nothing (off-topic query), return
+    empty so `found:false` stays truthful — lexical recall only augments queries that
+    already have a real dense signal.
+    """
+    dense = _dense_documents(prompt)
+    if not dense:
+        return []
+    try:
+        from lexical_index import lexical_search
+
+        lexical = lexical_search(_get_collection(), prompt, limit)
+    except Exception as exc:
+        logger.warning("lexical search failed (%s: %s); using dense only", type(exc).__name__, exc)
+        return dense
+    return _rrf_fuse(dense, lexical, rrf_k, limit)
+
+
+def _dense_documents(prompt):
     try:
         results = _query_collection(prompt)
     except Exception as exc:

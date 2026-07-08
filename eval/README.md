@@ -57,6 +57,27 @@ so the baseline never drifts from the installed SDK version.
 `cargo install cargo-stylus`, then run both scripts and publish the scorecards.
 Start informational; promote to a gate once a baseline is established.
 
+## A/B: validating hybrid retrieval
+
+Hybrid retrieval (dense + BM25 keyword fusion) is **opt-in** via the backend env
+`STYLUS_HYBRID_RETRIEVAL=1`, so it never silently changes behavior. Validate it
+before flipping the default:
+
+```bash
+# baseline (dense only)
+STYLUS_HYBRID_RETRIEVAL=0 <restart backend>
+python eval/run_eval.py --out eval/scorecard-dense.json
+
+# candidate (hybrid)
+STYLUS_HYBRID_RETRIEVAL=1 <restart backend>
+python eval/run_eval.py --out eval/scorecard-hybrid.json
+```
+
+Compare `found_accuracy` and `avg_source_recall` across the two scorecards. Ship
+hybrid as the default only if it wins (especially on the code-helper / exact-token
+queries it targets). Fusion preserves honest `found:false` — an empty dense result
+stays empty, so hybrid should not regress the negative cases.
+
 ## Trust boundary
 
 `compile_pass.py` runs the toolchain on **curated fixtures only**. Never wire it to
