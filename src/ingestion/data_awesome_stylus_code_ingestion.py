@@ -1,12 +1,18 @@
 """
 Ingest code from community projects referenced in the awesome-stylus list.
+
+Quality-filtered: archived repos are skipped, along with repos below a star
+floor or not pushed within a staleness window (all env-overridable, and every
+drop is logged rather than silently swallowed). Ingestion is restricted to
+Rust-relevant files, and each repo's ``stylus-sdk`` version is stamped onto its
+chunks so version-mismatched community code can be told apart at retrieval.
+
 Outputs: data/awesome_stylus_code.json
 """
 
-import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import requests
@@ -14,18 +20,20 @@ from dotenv import load_dotenv
 
 from basic_logs import write_ingestion_log
 from ingestion.incremental_utils import (
-    load_entries,
-    merge_entries,
     record_ingestion_stats,
     should_skip_ingestion,
+)
+from ingestion.code_repo_utils import (
+    build_headers,
+    collect_repo_code_entries,
+    fetch_text,
+    repo_metadata,
+    save_code_entries,
 )
 
 load_dotenv()
 
-HEADERS = {"User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"}
-token = os.environ.get("GITHUB_TOKEN")
-if token:
-    HEADERS["Authorization"] = f"Bearer {token}"
+HEADERS = build_headers()
 
 AWESOME_REPO = "OffchainLabs/awesome-stylus"
 # GitHub API raw endpoint gives canonical markdown, avoiding HTML placeholders
@@ -34,79 +42,17 @@ AWESOME_README_API = "https://api.github.com/repos/OffchainLabs/awesome-stylus/c
 OUTPUT_JSON_PATH = "data/awesome_stylus_code.json"
 JOB_NAME = "awesome_stylus_code"
 
-ALLOWED_EXTENSIONS = (
-    ".rs",
-    ".toml",
-    ".md",
-    ".yaml",
-    ".yml",
-    ".json",
-    ".js",
-    ".jsx",
-    ".ts",
-    ".tsx",
-    ".py",
-)
-MAX_FILE_BYTES = 200_000
+# Rust-relevant only: community frontend (.js/.ts/.py) added noise without
+# helping Stylus *contract* answers. README/markdown kept for project context.
+ALLOWED_EXTENSIONS = (".rs", ".toml", ".md")
 
-
-def safe_json(url: str) -> Optional[dict]:
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=20)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        write_ingestion_log(f"[warn] JSON fetch failed {url}: {e}")
-        return None
-
-
-def fetch_text(url: str, extra_headers: Optional[Dict] = None) -> Optional[str]:
-    try:
-        headers = HEADERS.copy()
-        if extra_headers:
-            headers.update(extra_headers)
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
-        if len(resp.content) > MAX_FILE_BYTES:
-            return None
-        return resp.text
-    except Exception as e:
-        write_ingestion_log(f"[warn] Failed to fetch {url}: {e}")
-        return None
-
-
-def github_tree(repo: str, ref: str) -> Optional[List[Dict]]:
-    url = f"https://api.github.com/repos/{repo}/git/trees/{ref}?recursive=1"
-    data = safe_json(url)
-    if data and "tree" in data:
-        return data["tree"]
-    return None
-
-
-def choose_ref(repo: str) -> Optional[str]:
-    for ref in ["main", "master"]:
-        if github_tree(repo, ref):
-            return ref
-    write_ingestion_log(f"[warn] Could not resolve ref for {repo}")
-    return None
-
-
-def repo_exists(repo: str) -> bool:
-    url = f"https://api.github.com/repos/{repo}"
-    resp = requests.get(url, headers=HEADERS, timeout=10)
-    if resp.status_code == 200:
-        return True
-    if resp.status_code == 404:
-        return False
-    # For other errors, assume not usable to avoid repeated failures
-    return False
+# Quality gates (env-overridable; lenient defaults so we filter noise, not signal).
+MIN_STARS = int(os.getenv("AWESOME_MIN_STARS", "2"))
+MAX_AGE_DAYS = int(os.getenv("AWESOME_MAX_AGE_DAYS", "730"))  # ~2 years
 
 
 def search_repo(owner: str, repo_prefix: str) -> Optional[str]:
-    """
-    Try to find the full repo name via GitHub search when the extracted slug fails.
-    Returns full_name (owner/name) or None.
-    """
+    """Find the full repo name via GitHub search when the extracted slug fails."""
     query = f"{repo_prefix} in:name user:{owner}"
     url = f"https://api.github.com/search/repositories?q={requests.utils.quote(query)}&per_page=1"
     try:
@@ -115,7 +61,7 @@ def search_repo(owner: str, repo_prefix: str) -> Optional[str]:
         items = resp.json().get("items", [])
         if items:
             return items[0]["full_name"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         write_ingestion_log(f"[info] search repo failed for {owner}/{repo_prefix}: {e}")
     return None
 
@@ -123,13 +69,7 @@ def search_repo(owner: str, repo_prefix: str) -> Optional[str]:
 def extract_repo_links_from_markdown(md: str) -> List[str]:
     """
     Extract repo slugs from GitHub links in the README.
-    Sources parsed:
-      - Markdown links: [text](href)
-      - Plain URLs in text
-    Supports:
-      - https://github.com/owner/repo/...
-      - https://raw.githubusercontent.com/owner/repo/branch/path
-      - /owner/repo or owner/repo inside markdown href
+    Supports markdown links, plain URLs, github.com and raw.githubusercontent.com.
     """
     repos = set()
 
@@ -137,36 +77,27 @@ def extract_repo_links_from_markdown(md: str) -> List[str]:
         return bool(re.match(r"^[A-Za-z0-9_.-]+$", part))
 
     hrefs = set()
-    # 1) Markdown links
     for m in re.finditer(r"\[[^\]]*\]\(([^)]+)\)", md):
         hrefs.add(m.group(1))
-    # 2) Plain URLs
     for url in re.findall(r"https?://[^\s)]+", md):
         hrefs.add(url)
 
     for url in hrefs:
-        # normalize relative or owner/repo hrefs
         if url.startswith("/"):
             url = f"https://github.com{url}"
         elif re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url):
             url = f"https://github.com/{url}"
 
-        # strip trailing punctuation
         url = url.rstrip(").,`>\"'")
         try:
             parsed = requests.utils.urlparse(url)
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
         netloc = parsed.netloc.lower()
         path_parts = parsed.path.strip("/").split("/")
-        if netloc.endswith("github.com"):
+        if netloc.endswith("github.com") or netloc.endswith("raw.githubusercontent.com"):
             if len(path_parts) >= 2 and valid_part(path_parts[0]) and valid_part(path_parts[1]):
-                slug = f"{path_parts[0]}/{path_parts[1]}"
-                repos.add(slug)
-        elif netloc.endswith("raw.githubusercontent.com"):
-            if len(path_parts) >= 2 and valid_part(path_parts[0]) and valid_part(path_parts[1]):
-                slug = f"{path_parts[0]}/{path_parts[1]}"
-                repos.add(slug)
+                repos.add(f"{path_parts[0]}/{path_parts[1]}")
 
     cleaned = set()
     for r in repos:
@@ -179,64 +110,67 @@ def extract_repo_links_from_markdown(md: str) -> List[str]:
             continue
         cleaned.add(r)
 
-    repos = cleaned
-    return sorted(repos)
+    return sorted(cleaned)
 
 
-def build_entry(repo: str, ref: str, path: str, text: str) -> Dict:
-    now_iso = datetime.utcnow().isoformat() + "Z"
-    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
-    return {
-        "text": text,
-        "metadata": {
-            "source": "awesome_stylus_code",
-            "repo": repo,
-            "ref": ref,
-            "path": path,
-            "url": raw_url,
-            "ingested_at": now_iso,
-        },
-    }
+def _is_stale(pushed_at: Optional[str]) -> bool:
+    """True if the repo hasn't been pushed within MAX_AGE_DAYS."""
+    if MAX_AGE_DAYS <= 0 or not pushed_at:
+        return False
+    try:
+        pushed = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    age_days = (datetime.now(timezone.utc) - pushed).days
+    return age_days > MAX_AGE_DAYS
+
+
+def _passes_quality_gate(repo: str) -> Optional[Dict]:
+    """Return repo metadata if the repo clears the quality gates, else None.
+
+    Every rejection is logged so a shrinking corpus is visible, not silent.
+    """
+    meta = repo_metadata(repo, HEADERS)
+    if meta is None:
+        # Try a search fallback for a moved/renamed slug before giving up.
+        owner, name = repo.split("/", 1)
+        suggestion = search_repo(owner, name)
+        if suggestion:
+            meta = repo_metadata(suggestion, HEADERS)
+        if meta is None:
+            write_ingestion_log(f"[skip] {repo}: not found or inaccessible")
+            return None
+
+    if meta["archived"]:
+        write_ingestion_log(f"[skip] {meta['full_name']}: archived")
+        return None
+    if meta["stars"] < MIN_STARS:
+        write_ingestion_log(
+            f"[skip] {meta['full_name']}: {meta['stars']} stars < min {MIN_STARS}"
+        )
+        return None
+    if _is_stale(meta["pushed_at"]):
+        write_ingestion_log(
+            f"[skip] {meta['full_name']}: stale (last push {meta['pushed_at']})"
+        )
+        return None
+    return meta
 
 
 def collect_repo_files(repo: str) -> List[Dict]:
-    if not repo_exists(repo):
-        owner, name = repo.split("/", 1)
-        suggestion = search_repo(owner, name)
-        if suggestion and repo_exists(suggestion):
-            write_ingestion_log(f"[info] Resolved {repo} -> {suggestion} via search")
-            repo = suggestion
-        else:
-            write_ingestion_log(f"[warn] Repo not found or inaccessible: {repo}")
-            return []
-
-    ref = choose_ref(repo)
-    if not ref:
+    meta = _passes_quality_gate(repo)
+    if meta is None:
         return []
 
-    tree = github_tree(repo, ref)
-    if tree is None:
-        return []
-
-    entries: List[Dict] = []
-    for node in tree:
-        if node.get("type") != "blob":
-            continue
-        path = node.get("path", "")
-        if "/node_modules/" in f"/{path}/":
-            continue
-        if not path.lower().endswith(ALLOWED_EXTENSIONS):
-            continue
-
-        raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
-        content = fetch_text(raw_url)
-        if not content:
-            continue
-
-        entries.append(build_entry(repo, ref, path, content))
-
-    write_ingestion_log(f"[ok] Collected {len(entries)} files from {repo}")
-    return entries
+    resolved = meta["full_name"]
+    return collect_repo_code_entries(
+        resolved,
+        source="awesome_stylus_code",
+        allowed_extensions=ALLOWED_EXTENSIONS,
+        headers=HEADERS,
+        released_at=meta.get("pushed_at"),
+        extra_meta={"stars": meta["stars"], "pushed_at": meta.get("pushed_at")},
+    )
 
 
 def ingest_awesome_stylus_code(force_refresh: bool = False):
@@ -248,7 +182,7 @@ def ingest_awesome_stylus_code(force_refresh: bool = False):
     entries: List[Dict] = []
     readme = fetch_text(
         AWESOME_README_API,
-        extra_headers={"Accept": "application/vnd.github.v3.raw"},
+        {**HEADERS, "Accept": "application/vnd.github.v3.raw"},
     )
     if not readme:
         write_ingestion_log("[warn] Could not fetch awesome-stylus README; skipping")
@@ -256,27 +190,13 @@ def ingest_awesome_stylus_code(force_refresh: bool = False):
         repo_slugs = extract_repo_links_from_markdown(readme)
         if not repo_slugs:
             write_ingestion_log("[warn] No repo links detected in README")
+        write_ingestion_log(
+            f"[info] {len(repo_slugs)} candidate repos (min_stars={MIN_STARS}, max_age_days={MAX_AGE_DAYS})"
+        )
         for repo in repo_slugs:
             entries.extend(collect_repo_files(repo))
 
-    existing = load_entries(OUTPUT_JSON_PATH)
-    merged, stats = merge_entries(
-        existing,
-        entries,
-        key_fn=lambda e: (
-            e.get("metadata", {}).get("repo"),
-            e.get("metadata", {}).get("path"),
-        ),
-    )
-
-    os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
-    with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2)
-
-    write_ingestion_log(
-        f"[ok] Saved {len(merged)} community code entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
-    )
-    record_ingestion_stats(JOB_NAME, stats)
+    merged = save_code_entries(OUTPUT_JSON_PATH, entries, JOB_NAME)
     return len(merged)
 
 

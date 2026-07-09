@@ -30,12 +30,34 @@ Each job saves JSON under `data/` (created on first run) and appends run details
 | `data_github_issues_ingestion.py` | Stylus GitHub issues and comments | `data/github_issues_sectioned.json` |
 | `data_documentation_ingestion.py` | Official Arbitrum Stylus docs + by-example pages | `data/stylus_docs.json` |
 | `data_openzeppelin_stylus_ingestion.py` | OpenZeppelin Contracts Stylus docs | `data/openzeppelin_stylus_docs.json` |
+| `data_openzeppelin_stylus_code_ingestion.py` | OpenZeppelin `rust-contracts-stylus` contract source (release-pinned) | `data/openzeppelin_stylus_code.json` |
 | `data_stylus_versions_ingestion.py` | `stylus-sdk-rs` changelog and recent merged PRs | `data/stylus_versions.json` |
 | `data_stylus_course_ingestion.py` | LearnWeb3 Stylus course pages | `data/stylus_course.json` |
-| `data_stylus_framework_ingestion.py` | Stylus framework code snippets | `data/stylus_framework_code.json` |
+| `data_stylus_framework_ingestion.py` | `stylus-sdk-rs` source, last 3 minor releases side-by-side | `data/stylus_framework_code.json` |
+| `data_stylus_by_example_ingestion.py` | Stylus-by-Example repo source (examples + walkthroughs) | `data/stylus_by_example_code.json` |
 | `data_stylus_saturdays_ingestion.py` | Stylus Saturdays articles | `data/stylus_saturdays.json` |
-| `data_awesome_stylus_code_ingestion.py` | Code files referenced from the Awesome Stylus list | `data/awesome_stylus_code.json` |
+| `data_awesome_stylus_code_ingestion.py` | Quality-filtered code from repos in the Awesome Stylus list | `data/awesome_stylus_code.json` |
 | `data_stylus_saturdays_ingestion.py` | Stylus Saturdays articles (requires `playwright`) | `data/stylus_saturdays.json` |
+
+## SDK version awareness
+
+Code sources are version-anchored so retrieval can distinguish SDK versions and
+avoid surfacing deprecated APIs as current (see `code_repo_utils.py`):
+
+- The **SDK framework** job keeps the newest patch of each of the last
+  `STYLUS_SDK_KEEP_MINORS` (default 3) minor releases side-by-side — each chunk
+  stamped with its own `sdk_version`, so version-specific questions get
+  version-appropriate code. Releases that roll off the window are pruned.
+- The **OpenZeppelin contracts** job pins to the repo's latest **release tag**
+  (not moving HEAD) and stamps `metadata.sdk_version` + `released_at`.
+- **Community code** (`awesome_stylus_code`) parses each repo's `Cargo.toml`
+  `stylus-sdk` dependency and stamps `sdk_version`. Repos are quality-filtered:
+  archived repos are dropped, along with those below `AWESOME_MIN_STARS`
+  (default 2) or not pushed within `AWESOME_MAX_AGE_DAYS` (default 730); every
+  drop is logged. Only `.rs`/`.toml`/`.md` are ingested.
+- At query time (`retrieve_chroma_docs.py`) `sdk_version` is surfaced in the
+  context header and citations, and code-intent ranking prefers version-anchored
+  chunks while down-ranking pre-0.6 (and hard-skipping pre-0.4) API-era code.
 
 ## Incremental behavior
 
