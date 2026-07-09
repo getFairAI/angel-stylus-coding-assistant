@@ -9,6 +9,10 @@ const ALL_SKILLS = [
   "sift-stylus-porting-auditor",
   "sift-stylus-research",
   "sift-stylus-code-helper",
+  "sift-stylus-verify",
+  "sift-stylus-scaffold",
+  "sift-stylus-deploy",
+  "sift-stylus-review",
 ];
 
 function usage() {
