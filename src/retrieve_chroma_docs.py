@@ -107,6 +107,19 @@ PORTING_CANONICAL_REFERENCES = [
 ]
 
 LEGACY_EXAMPLE_VERSION_PATTERN = re.compile(r"v0\.[0-3]\.x")
+
+
+def _sdk_version_tuple(version):
+    """Comparable numeric tuple for an ``sdk_version`` metadata string.
+
+    ``"0.9.0"`` -> ``(0, 9, 0)``; ``"unreleased"``/``None`` -> ``None`` (no
+    opinion). Lets ranking prefer version-anchored code and down-rank the
+    pre-``#[public]`` legacy API era without a brittle text regex.
+    """
+    if not version:
+        return None
+    nums = re.findall(r"\d+", str(version).split("-")[0])
+    return tuple(int(n) for n in nums) if nums else None
 REFERENCE_TOKEN_STOPWORDS = {
     "and",
     "the",
@@ -177,6 +190,7 @@ def format_chunk_with_metadata(hit: dict) -> str:
     section = meta.get("section") or meta.get("category") or ""
     subsection = meta.get("subsection") or ""
     source = meta.get("source") or ""
+    sdk_version = meta.get("sdk_version") or ""
     url = meta.get("url") or meta.get("repo_url") or ""
 
     idx = safe_int(meta.get("chunk_index"))
@@ -192,6 +206,9 @@ def format_chunk_with_metadata(hit: dict) -> str:
         header_parts.append(subsection)
     if source:
         header_parts.append(f"source={source}")
+    # Surface the SDK version so the model can flag/compare version-specific code.
+    if sdk_version:
+        header_parts.append(f"sdk={sdk_version}")
     if position_label:
         header_parts.append(position_label)
     if url:
@@ -384,6 +401,17 @@ def score_hit(hit, prefs):
         if section in {"examples", "libraries", "tools", "projects"}:
             score -= 0.6
 
+        # Version-aware ranking: prefer code whose target SDK version is known
+        # (version-anchored) and down-rank clearly legacy API-era code so the
+        # assistant doesn't surface deprecated patterns as current.
+        sdk_tuple = _sdk_version_tuple(metadata.get("sdk_version"))
+        if sdk_tuple is not None:
+            score -= 0.15
+            if sdk_tuple < (0, 4):
+                score += 0.9
+            elif sdk_tuple < (0, 6):
+                score += 0.4
+
     # Favor early chunks from the same parent to avoid mid-doc orphan context.
     chunk_position = get_chunk_position(metadata)
     if chunk_position is not None:
@@ -450,6 +478,12 @@ def _reference_collection_profile(include_research_contract: bool) -> dict:
 
 
 def _is_legacy_examples_chunk(metadata: dict) -> bool:
+    # Prefer explicit SDK-version metadata when present: pre-0.4 code predates
+    # the current API surface regardless of which section it lives in.
+    sdk_tuple = _sdk_version_tuple(metadata.get("sdk_version"))
+    if sdk_tuple is not None and sdk_tuple < (0, 4):
+        return True
+
     section = (metadata.get("section") or "").lower()
     subsection = (metadata.get("subsection") or "").lower()
     title = (metadata.get("title") or "").lower()
@@ -499,6 +533,7 @@ def collect_references(ranked_hits, max_items=20, include_research_contract=True
                     "section": section,
                     "subsection": subsection,
                     "repo": repo,
+                    "sdk_version": metadata.get("sdk_version") or "",
                 },
                 max_items,
             )

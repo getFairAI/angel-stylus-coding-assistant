@@ -45,6 +45,55 @@ def test_score_hit_code_request_prefers_repo_examples_over_docs():
     assert repo_score < docs_score
 
 
+def test_score_hit_code_request_downranks_legacy_sdk_version():
+    base_meta = {"source": "stylus_framework_code", "section": "", "repo": "o/r"}
+    current = {"text": "impl contract", "metadata": {**base_meta, "sdk_version": "0.9.0"}, "distance": 0.2}
+    legacy = {"text": "impl contract", "metadata": {**base_meta, "sdk_version": "0.3.0"}, "distance": 0.2}
+    prefs = retrieval.get_query_preferences("show me a stylus contract", code_request=True)
+
+    # Lower score is better; current-version code should outrank legacy code.
+    assert retrieval.score_hit(current, prefs) < retrieval.score_hit(legacy, prefs)
+
+
+def test_score_hit_prefers_version_anchored_code():
+    meta = {"source": "awesome_stylus_code", "section": "", "repo": "o/r"}
+    anchored = {"text": "impl contract", "metadata": {**meta, "sdk_version": "0.9.0"}, "distance": 0.2}
+    unknown = {"text": "impl contract", "metadata": dict(meta), "distance": 0.2}
+    prefs = retrieval.get_query_preferences("stylus contract code", code_request=True)
+
+    assert retrieval.score_hit(anchored, prefs) < retrieval.score_hit(unknown, prefs)
+
+
+def test_format_chunk_surfaces_sdk_version():
+    hit = {
+        "text": "fn main() {}",
+        "metadata": {
+            "title": "lib.rs",
+            "source": "stylus_framework_code",
+            "sdk_version": "0.9.0",
+            "url": "https://raw.githubusercontent.com/o/r/v0.9.0/src/lib.rs",
+        },
+    }
+    formatted = retrieval.format_chunk_with_metadata(hit)
+    assert "sdk=0.9.0" in formatted
+
+
+def test_collect_references_carries_sdk_version():
+    ranked_hits = [
+        {
+            "text": "impl contract",
+            "metadata": {
+                "title": "erc20.rs",
+                "url": "https://github.com/OpenZeppelin/rust-contracts-stylus",
+                "source": "openzeppelin_stylus_code",
+                "sdk_version": "0.2.0",
+            },
+        }
+    ]
+    refs = retrieval.collect_references(ranked_hits, max_items=5)
+    assert refs and refs[0]["sdk_version"] == "0.2.0"
+
+
 def test_collect_references_includes_inline_and_plain_urls_and_filters_local():
     ranked_hits = [
         {

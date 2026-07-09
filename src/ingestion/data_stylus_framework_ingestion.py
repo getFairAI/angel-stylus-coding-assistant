@@ -1,126 +1,87 @@
 """
-Ingest the Stylus Rust SDK (bast framework) codebase for RAG.
+Ingest the Stylus Rust SDK (base framework) codebase for RAG.
+
+Pins to the newest patch of each of the last ``STYLUS_SDK_KEEP_MINORS`` (default
+3) minor releases of ``stylus-sdk-rs`` — kept side-by-side, each chunk stamped
+with its own ``sdk_version`` — so version-specific questions ("how did storage
+work in 0.8?") have version-appropriate material instead of only current HEAD.
+Versions that roll off the window are pruned. Falls back to the default branch
+(marked ``unreleased``) when no release/tag can be resolved.
+
 Outputs: data/stylus_framework_code.json
 """
 
-import json
 import os
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import List, Dict, Set, Tuple
 
-import requests
 from dotenv import load_dotenv
 
 from basic_logs import write_ingestion_log
 from ingestion.incremental_utils import (
-    load_entries,
-    merge_entries,
     record_ingestion_stats,
     should_skip_ingestion,
+)
+from ingestion.code_repo_utils import (
+    build_headers,
+    collect_repo_code_entries,
+    latest_minor_releases,
+    save_code_entries,
 )
 
 load_dotenv()
 
-HEADERS = {"User-Agent": "StylusRAGBot/1.0 (+https://arbitrum.io)"}
-token = os.environ.get("GITHUB_TOKEN")
-if token:
-    HEADERS["Authorization"] = f"Bearer {token}"
+HEADERS = build_headers()
 
 FRAMEWORK_REPO = "OffchainLabs/stylus-sdk-rs"
 OUTPUT_JSON_PATH = "data/stylus_framework_code.json"
 JOB_NAME = "stylus_framework"
 
-ALLOWED_EXTENSIONS = (
-    ".rs",
-    ".toml",
-    ".md",
-    ".yaml",
-    ".yml",
-    ".json",
-)
-MAX_FILE_BYTES = 200_000
+ALLOWED_EXTENSIONS = (".rs", ".toml", ".md", ".yaml", ".yml", ".json")
+# How many recent minor release lines to keep indexed side-by-side.
+KEEP_MINORS = int(os.getenv("STYLUS_SDK_KEEP_MINORS", "3"))
 
 
-def safe_json(url: str) -> Optional[dict]:
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=20)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        write_ingestion_log(f"[warn] JSON fetch failed {url}: {e}")
-        return None
+def collect_framework_files() -> Tuple[List[Dict], Set[str]]:
+    """Collect SDK source across the last KEEP_MINORS minor releases.
 
+    For the SDK repo itself the release tag *is* the SDK version, so
+    ``sdk_version`` comes from the tag. Returns (entries, pinned_refs) so the
+    caller can prune versions that have rolled off the window.
+    """
+    releases = latest_minor_releases(FRAMEWORK_REPO, HEADERS, count=KEEP_MINORS)
+    if not releases:
+        write_ingestion_log(
+            f"[warn] No releases resolved for {FRAMEWORK_REPO}; using default branch HEAD"
+        )
+        entries = collect_repo_code_entries(
+            FRAMEWORK_REPO,
+            source="stylus_framework_code",
+            allowed_extensions=ALLOWED_EXTENSIONS,
+            headers=HEADERS,
+            sdk_version="unreleased",
+        )
+        return entries, set()
 
-def fetch_text(url: str) -> Optional[str]:
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=30)
-        resp.raise_for_status()
-        if len(resp.content) > MAX_FILE_BYTES:
-            return None
-        return resp.text
-    except Exception as e:
-        write_ingestion_log(f"[warn] Failed to fetch {url}: {e}")
-        return None
-
-
-def github_tree(repo: str, ref: str) -> Optional[List[Dict]]:
-    url = f"https://api.github.com/repos/{repo}/git/trees/{ref}?recursive=1"
-    data = safe_json(url)
-    if data and "tree" in data:
-        return data["tree"]
-    return None
-
-
-def choose_ref(repo: str) -> Optional[str]:
-    for ref in ["main", "master"]:
-        if github_tree(repo, ref):
-            return ref
-    write_ingestion_log(f"[warn] Could not resolve ref for {repo}")
-    return None
-
-
-def build_entry(repo: str, ref: str, path: str, text: str) -> Dict:
-    now_iso = datetime.utcnow().isoformat() + "Z"
-    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
-    return {
-        "text": text,
-        "metadata": {
-            "source": "stylus_framework_code",
-            "repo": repo,
-            "ref": ref,
-            "path": path,
-            "url": raw_url,
-            "ingested_at": now_iso,
-        },
-    }
-
-
-def collect_framework_files() -> List[Dict]:
-    ref = choose_ref(FRAMEWORK_REPO)
-    if not ref:
-        return []
-
-    tree = github_tree(FRAMEWORK_REPO, ref)
-    if tree is None:
-        return []
+    pinned = ", ".join(r["tag"] for r in releases)
+    write_ingestion_log(f"[info] Pinning {FRAMEWORK_REPO} to releases: {pinned}")
 
     entries: List[Dict] = []
-    for node in tree:
-        if node.get("type") != "blob":
-            continue
-        path = node.get("path", "")
-        if not path.lower().endswith(ALLOWED_EXTENSIONS):
-            continue
-
-        raw_url = f"https://raw.githubusercontent.com/{FRAMEWORK_REPO}/{ref}/{path}"
-        content = fetch_text(raw_url)
-        if not content:
-            continue
-
-        entries.append(build_entry(FRAMEWORK_REPO, ref, path, content))
-
-    write_ingestion_log(f"[ok] Collected {len(entries)} framework files")
-    return entries
+    keep_refs: Set[str] = set()
+    for release in releases:
+        ref = release["tag"]
+        keep_refs.add(ref)
+        entries.extend(
+            collect_repo_code_entries(
+                FRAMEWORK_REPO,
+                source="stylus_framework_code",
+                allowed_extensions=ALLOWED_EXTENSIONS,
+                headers=HEADERS,
+                ref=ref,
+                sdk_version=release["sdk_version"],
+                released_at=release.get("published_at"),
+            )
+        )
+    return entries, keep_refs
 
 
 def ingest_stylus_framework(force_refresh: bool = False):
@@ -129,18 +90,14 @@ def ingest_stylus_framework(force_refresh: bool = False):
         record_ingestion_stats(JOB_NAME, {"added": 0, "updated": 0, "unchanged": 0, "retained": 0}, skipped=True)
         return 0
 
-    entries = collect_framework_files()
-    existing = load_entries(OUTPUT_JSON_PATH)
-    merged, stats = merge_entries(
-        existing, entries, key_fn=lambda e: (e.get("metadata", {}).get("repo"), e.get("metadata", {}).get("path"))
+    entries, keep_refs = collect_framework_files()
+    merged = save_code_entries(
+        OUTPUT_JSON_PATH,
+        entries,
+        JOB_NAME,
+        multi_version=bool(keep_refs),
+        keep_refs=keep_refs or None,
     )
-    os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
-    with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2)
-    write_ingestion_log(
-        f"[ok] Saved {len(merged)} framework code entries (added {stats['added']}, updated {stats['updated']}, unchanged {stats['unchanged']}, retained {stats['retained']}) to {OUTPUT_JSON_PATH}"
-    )
-    record_ingestion_stats(JOB_NAME, stats)
     return len(merged)
 
 

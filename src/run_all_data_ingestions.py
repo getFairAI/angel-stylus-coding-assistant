@@ -48,6 +48,8 @@ def run_all(force_refresh: bool = False):
         ("OZ Stylus Docs", "ingestion.data_openzeppelin_stylus_ingestion", "ingest_openzeppelin_stylus_docs"),
         ("Stylus Versions (changelog + PRs)", "ingestion.data_stylus_versions_ingestion", "ingest_stylus_versions"),
         ("Stylus Framework Code", "ingestion.data_stylus_framework_ingestion", "ingest_stylus_framework"),
+        ("Stylus By Example Code", "ingestion.data_stylus_by_example_ingestion", "ingest_stylus_by_example"),
+        ("OZ Stylus Contracts Code", "ingestion.data_openzeppelin_stylus_code_ingestion", "ingest_openzeppelin_stylus_code"),
         ("Awesome Stylus Community Code", "ingestion.data_awesome_stylus_code_ingestion", "ingest_awesome_stylus_code"),
         ("Stylus Saturdays", "ingestion.data_stylus_saturdays_ingestion", "scrape_all"),
     ]
